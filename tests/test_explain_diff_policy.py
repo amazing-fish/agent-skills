@@ -124,7 +124,17 @@ class DiffSizePolicyTests(unittest.TestCase):
         )
         self.assertEqual(result.mode, "large")
 
-    def test_github_standard_uses_links_and_key_hunks(self):
+    def test_github_small_uses_pinned_links_only(self):
+        result = self.module.classify_diff_size(
+            changed_files=3,
+            changed_lines=20,
+            patch_bytes=500,
+            host="github.com",
+        )
+        self.assertEqual(result.mode, "small")
+        self.assertEqual(result.detail_delivery, "pinned-github-links-only")
+
+    def test_github_standard_uses_pinned_links_only(self):
         result = self.module.classify_diff_size(
             changed_files=21,
             changed_lines=801,
@@ -132,9 +142,9 @@ class DiffSizePolicyTests(unittest.TestCase):
             host="GitHub",
         )
         self.assertEqual(result.mode, "standard")
-        self.assertEqual(result.detail_delivery, "pinned-github-links-and-key-hunks")
+        self.assertEqual(result.detail_delivery, "pinned-github-links-only")
 
-    def test_github_large_uses_links_and_key_hunks(self):
+    def test_github_large_uses_pinned_links_only(self):
         result = self.module.classify_diff_size(
             changed_files=100,
             changed_lines=10_000,
@@ -142,7 +152,7 @@ class DiffSizePolicyTests(unittest.TestCase):
             host="github.com",
         )
         self.assertEqual(result.mode, "large")
-        self.assertEqual(result.detail_delivery, "pinned-github-links-and-key-hunks")
+        self.assertEqual(result.detail_delivery, "pinned-github-links-only")
 
     def test_github_dot_com_fqdn_is_normalized(self):
         result = self.module.classify_diff_size(
@@ -151,7 +161,7 @@ class DiffSizePolicyTests(unittest.TestCase):
             patch_bytes=128 * 1024 + 1,
             host=" GitHub.COM. ",
         )
-        self.assertEqual(result.detail_delivery, "pinned-github-links-and-key-hunks")
+        self.assertEqual(result.detail_delivery, "pinned-github-links-only")
 
     def test_non_github_hostname_does_not_match_by_suffix(self):
         result = self.module.classify_diff_size(
@@ -194,7 +204,7 @@ class DiffSizePolicyTests(unittest.TestCase):
         self.assertEqual(payload["mode"], "large")
         self.assertEqual(
             payload["detail_delivery"],
-            "pinned-github-links-and-key-hunks",
+            "pinned-github-links-only",
         )
 
     def test_negative_metric_is_rejected(self):
