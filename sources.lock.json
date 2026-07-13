@@ -10,7 +10,21 @@
       "source_url": "https://github.com/GitHubxsy/agent-skills/blob/main/skills/explain-diff-for-human-review/SKILL.md",
       "license": "Apache-2.0",
       "third_party_license_path": "THIRD_PARTY_LICENSES/Apache-2.0-GitHubxsy-agent-skills.txt",
-      "imported_at": "2026-07-13"
+      "imported_at": "2026-07-13",
+      "local_modifications": {
+        "modified": true,
+        "issues": [
+          2,
+          3
+        ],
+        "notice_location": "skills/explain-diff-for-human-review/SKILL.md",
+        "added_files": [
+          "skills/explain-diff-for-human-review/scripts/resolve_report_path.py",
+          "skills/explain-diff-for-human-review/scripts/classify_diff_size.py",
+          "tests/test_explain_diff_policy.py"
+        ],
+        "modified_at": "2026-07-13"
+      }
     }
   }
 }
