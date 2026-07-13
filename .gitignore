@@ -1,0 +1,16 @@
+# Generated reports
+**/reports/
+*.html
+
+# Credentials and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Tool caches
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
