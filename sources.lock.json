@@ -9,7 +9,7 @@
       "imported_content_transport": "UTF-8 text via GitHub connector",
       "source_url": "https://github.com/GitHubxsy/agent-skills/blob/main/skills/explain-diff-for-human-review/SKILL.md",
       "license": "Apache-2.0",
-      "third_party_license_path": "THIRD_PARTY_LICENSES/Apache-2.0-GitHubxsy-agent-skills.txt",
+      "third_party_license_path": "LICENSE",
       "imported_at": "2026-07-13",
       "local_modifications": {
         "modified": true,

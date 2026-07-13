@@ -41,4 +41,4 @@ skills/
 
 ## License
 
-本仓库自有内容采用 [MIT License](LICENSE)。从外部引入的内容继续遵循各自许可证；详见 [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES/) 和 `sources.lock.json`。
+本仓库采用 [Apache License 2.0](LICENSE)。外部 Skill 的来源、固定版本和修改记录见 `sources.lock.json`。
