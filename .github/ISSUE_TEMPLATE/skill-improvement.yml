@@ -1,0 +1,39 @@
+name: Skill improvement
+description: Propose a correctness, safety, scalability, or usability improvement
+title: "[skill] "
+labels:
+  - enhancement
+body:
+  - type: input
+    id: skill
+    attributes:
+      label: Skill
+      placeholder: explain-diff-for-human-review
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the current behavior and why it is insufficient.
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk or failure scenario
+      description: Explain the concrete failure, privacy, compatibility, or review-quality impact.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Use a checklist with observable outcomes.
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: State what this issue must not expand into.
