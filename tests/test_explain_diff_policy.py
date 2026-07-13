@@ -139,10 +139,28 @@ class DiffSizePolicyTests(unittest.TestCase):
             changed_files=100,
             changed_lines=10_000,
             patch_bytes=2 * 1024 * 1024,
-            host="github",
+            host="github.com",
         )
         self.assertEqual(result.mode, "large")
         self.assertEqual(result.detail_delivery, "pinned-github-links-and-key-hunks")
+
+    def test_github_dot_com_fqdn_is_normalized(self):
+        result = self.module.classify_diff_size(
+            changed_files=21,
+            changed_lines=801,
+            patch_bytes=128 * 1024 + 1,
+            host=" GitHub.COM. ",
+        )
+        self.assertEqual(result.detail_delivery, "pinned-github-links-and-key-hunks")
+
+    def test_non_github_hostname_does_not_match_by_suffix(self):
+        result = self.module.classify_diff_size(
+            changed_files=21,
+            changed_lines=801,
+            patch_bytes=128 * 1024 + 1,
+            host="notgithub.com",
+        )
+        self.assertEqual(result.detail_delivery, "collapsed-bounded-details")
 
     def test_unavailable_patch_marks_evidence_incomplete(self):
         result = self.module.classify_diff_size(
@@ -166,7 +184,7 @@ class DiffSizePolicyTests(unittest.TestCase):
                 "--patch-bytes",
                 "1000",
                 "--host",
-                "github",
+                "github.com",
             ],
             check=True,
             capture_output=True,
