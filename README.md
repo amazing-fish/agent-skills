@@ -30,6 +30,7 @@ skills/
 - 来源：[GitHubxsy/agent-skills](https://github.com/GitHubxsy/agent-skills/tree/main/skills/explain-diff-for-human-review)
 - 上游版本：`110c9dd9e30d278edbfc30fc6bac05cdf4e4afd3`
 - 上游许可证：Apache-2.0
+- 本地修订：[#2](../../issues/2) 报告输出路径；[#3](../../issues/3) 大规模 diff 与 GitHub 固定链接策略
 
 ## 管理约定
 
