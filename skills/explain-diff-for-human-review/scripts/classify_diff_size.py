@@ -16,6 +16,8 @@ STANDARD_MAX_FILES = 80
 STANDARD_MAX_CHANGED_LINES = 4_000
 STANDARD_MAX_PATCH_BYTES = 1024 * 1024
 
+GITHUB_HOST_ALIASES = frozenset({"github", "github.com"})
+
 
 @dataclass(frozen=True)
 class DiffSizeDecision:
@@ -62,8 +64,8 @@ def classify_diff_size(
     else:
         mode = "large"
 
-    normalized_host = host.strip().lower()
-    if normalized_host == "github":
+    normalized_host = host.strip().lower().rstrip(".")
+    if normalized_host in GITHUB_HOST_ALIASES:
         detail_delivery = (
             "inline-or-pinned-links"
             if mode == "small"
@@ -102,7 +104,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--changed-lines", type=int, required=True)
     parser.add_argument("--patch-bytes", type=int, required=True)
     parser.add_argument("--unavailable-patches", type=int, default=0)
-    parser.add_argument("--host", default="unknown")
+    parser.add_argument(
+        "--host",
+        default="unknown",
+        help="hosting platform alias or parsed hostname, for example github or github.com",
+    )
     return parser
 
 
