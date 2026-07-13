@@ -23,7 +23,7 @@
           "skills/explain-diff-for-human-review/scripts/resolve_report_path.py",
           "skills/explain-diff-for-human-review/scripts/classify_diff_size.py",
           "tests/test_explain_diff_policy.py",
-          "tests/test_repository_policy.py"
+          "tests/test_skill_policy.py"
         ],
         "modified_at": "2026-07-13"
       }
