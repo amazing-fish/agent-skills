@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "skills": {
+    "explain-diff-for-human-review": {
+      "source_repository": "GitHubxsy/agent-skills",
+      "source_path": "skills/explain-diff-for-human-review/SKILL.md",
+      "source_ref": "main",
+      "source_blob_sha": "110c9dd9e30d278edbfc30fc6bac05cdf4e4afd3",
+      "imported_content_transport": "UTF-8 text via GitHub connector",
+      "source_url": "https://github.com/GitHubxsy/agent-skills/blob/main/skills/explain-diff-for-human-review/SKILL.md",
+      "license": "Apache-2.0",
+      "third_party_license_path": "THIRD_PARTY_LICENSES/Apache-2.0-GitHubxsy-agent-skills.txt",
+      "imported_at": "2026-07-13"
+    }
+  }
+}
