@@ -66,11 +66,7 @@ def classify_diff_size(
 
     normalized_host = host.strip().lower().rstrip(".")
     if normalized_host in GITHUB_HOST_ALIASES:
-        detail_delivery = (
-            "inline-or-pinned-links"
-            if mode == "small"
-            else "pinned-github-links-and-key-hunks"
-        )
+        detail_delivery = "pinned-github-links-only"
     elif mode == "small":
         detail_delivery = "inline"
     elif mode == "standard":
