@@ -30,7 +30,7 @@ skills/
 - 来源：[GitHubxsy/agent-skills](https://github.com/GitHubxsy/agent-skills/tree/main/skills/explain-diff-for-human-review)
 - 上游版本：`110c9dd9e30d278edbfc30fc6bac05cdf4e4afd3`
 - 上游许可证：Apache-2.0
-- 本地修订：[#2](../../issues/2) 报告输出路径；[#3](../../issues/3) 大规模 diff 与 GitHub 固定链接策略
+- 本地修订：[#2](../../issues/2) 报告输出路径；[#3](../../issues/3) 大规模 diff；[#7](../../issues/7) GitHub 固定链接证据策略
 
 ## 管理约定
 
@@ -38,6 +38,7 @@ skills/
 2. 本地修改必须通过 Issue 说明动机、验收标准和兼容性影响。
 3. 修改过的外部文件应在 PR 中明确标注变更，不覆盖来源记录。
 4. 合入前检查 frontmatter、链接、敏感信息和生成物。
+5. PR 生命周期、评论修复位置和合入时序遵循根目录 [`AGENTS.md`](AGENTS.md)。
 
 ## License
 
