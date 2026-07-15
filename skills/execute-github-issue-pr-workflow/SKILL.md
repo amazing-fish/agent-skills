@@ -31,7 +31,7 @@ Treat GitHub remote state as authoritative. Preserve unrelated work and never co
 For each new ready-for-review PR HEAD:
 
 1. Record the PR URL, HEAD, and existing Codex 👍 reactions; previous reactions are stale for this cycle. Then set exactly one **one-shot 6-minute timer**. Do not poll while it is active.
-2. When it fires, refresh the PR once: read the Codex state or reactions on the PR body, review decisions including requested changes, conversation and inline comments, unresolved threads, checks, mergeability, and current HEAD.
+2. When it fires, refresh the PR once. If HEAD differs from the recorded HEAD, discard this cycle, snapshot reactions again, and start one new timer. Otherwise read the Codex state or reactions on the PR body, review decisions including requested changes, conversation and inline comments, unresolved threads, checks, and mergeability.
 3. Classify that single refresh:
    - **Passed:** a new 👍 from the repository's Codex bot on the PR during this cycle is sufficient. Do not require a commit review, `commit_id`, or SHA binding. Continue only if no actionable feedback or relevant failed check remains; document any explicit check waiver.
    - **In progress:** do not mention the bot again; set one new one-shot 6-minute timer.
