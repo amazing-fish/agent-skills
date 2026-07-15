@@ -62,8 +62,8 @@ Immediately before an authorized merge, require HEAD to equal the reported and a
 
 ## Reconcile and continue
 
-1. Verify the merge landed and return clickable PR and merge-commit URLs.
-2. Close or update the Issue only within the user's authorization; return its URL and residual work.
+1. If merged, verify it landed and return clickable PR and merge-commit URLs. If staged, keep the PR unmerged and record its URL, exact HEAD, and dependencies.
+2. Close or update the Issue only for landed work and within the user's authorization; keep staged Issues open. Return the Issue URL and residual work.
 3. Update docs when commands, contracts, schemas, defaults, operations, safety boundaries, or user-visible behavior change.
 4. After every two merged feature Issues, or two staged feature Issues in automatic staging mode, refresh roadmap/status docs and reconcile related Issues. Label unmerged work as `staged` and link its PR and exact HEAD.
 5. Stop instead of guessing when authorization, the diff skill, review success, checks, permissions, conflicts, credentials, or a material scope decision blocks progress.
