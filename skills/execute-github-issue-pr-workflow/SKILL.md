@@ -13,7 +13,7 @@ Treat GitHub remote state as authoritative. Treat local clones as working copies
 2. Preserve unrelated user changes. Do not let multiple agents make broad edits on the same branch.
 3. Determine repository ownership from verified GitHub metadata:
    - For a repository owned by the user, create a ready-for-review PR by default; no extra authorization is needed to create it.
-   - For an external upstream repository, work from the user's fork, create a Draft PR by default, and obtain explicit authorization before submitting changes upstream.
+   - For an external upstream repository, prepare and push changes only to the user's fork without contacting upstream maintainers. Obtain explicit authorization before opening any PR against upstream; after authorization, create that upstream PR as Draft by default.
 4. Keep one active implementation Issue at a time. In default mode, keep only its corresponding PR active; automatic staging mode may accumulate multiple reviewed, unmerged PRs while still implementing Issues sequentially.
 5. Ask only when a missing decision materially changes architecture, public APIs, schemas, migration, credentials, safety, destructive actions, cost, or user-visible behavior.
 
