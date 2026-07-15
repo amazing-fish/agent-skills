@@ -68,13 +68,18 @@ class IndependentReviewPolicyTests(unittest.TestCase):
             expected_base_sha="a" * 40,
             expected_head_sha="b" * 40,
             expected_mode="small",
+            expected_paths=["src/example.py"],
         )
 
     def test_standard_review_records_omitted_paths(self):
         payload = self._payload(diff_mode="standard")
         payload["omitted_paths"] = ["vendor/generated.js"]
         payload["evidence_gaps"] = ["Generated vendor file was not inspected."]
-        self.module.validate_independent_review(payload, expected_mode="standard")
+        self.module.validate_independent_review(
+            payload,
+            expected_mode="standard",
+            expected_paths=["src/example.py", "vendor/generated.js"],
+        )
 
     def test_unavailable_subagent_requires_disclosed_single_agent_fallback(self):
         payload = self._payload()
@@ -117,6 +122,14 @@ class IndependentReviewPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "line range"):
             self.module.validate_independent_review(payload)
 
+    def test_declared_coverage_must_match_expected_paths(self):
+        payload = self._payload()
+        with self.assertRaisesRegex(ValueError, "declared coverage"):
+            self.module.validate_independent_review(
+                payload,
+                expected_paths=["src/example.py", "docs/other.md"],
+            )
+
     def test_cli_validates_machine_readable_payload(self):
         payload = self._payload()
         with tempfile.TemporaryDirectory() as temp:
@@ -133,6 +146,8 @@ class IndependentReviewPolicyTests(unittest.TestCase):
                     "b" * 40,
                     "--expected-mode",
                     "small",
+                    "--expected-path",
+                    "src/example.py",
                 ],
                 check=True,
                 capture_output=True,
