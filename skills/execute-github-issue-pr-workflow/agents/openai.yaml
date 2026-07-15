@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Issue–PR 闭环"
+  short_description: "按既定规则推进 Issue、PR、评审、合并与文档更新"
+  default_prompt: "使用 $execute-github-issue-pr-workflow 按我的 GitHub Issue–PR 闭环流程推进当前仓库任务。"
