@@ -46,8 +46,8 @@ Return one JSON object and no prose:
 }
 ```
 
-Allowed statuses are `completed`, `unavailable`, `failed`, `timed_out`, and `skipped`. A non-completed status must return empty `included_paths` and `findings`, plus at least one `evidence_gaps` entry explaining that the main agent used the single-agent fallback.
+Allowed statuses are `completed`, `unavailable`, `failed`, `timed_out`, and `skipped`. A non-completed status must return empty `included_paths` and `findings`, place the entire planned review scope in `omitted_paths`, and include at least one `evidence_gaps` entry explaining that the main agent used the single-agent fallback.
 
 `severity` is one of `critical`, `high`, `medium`, `low`, or `info`; `confidence` is `high`, `medium`, or `low`. Every finding must use the exact canonical evidence reference `<path>@<head_sha>:L<line_start>-L<line_end>` so the path, fixed version, and line range cannot drift independently.
 
-Validate the payload with `scripts/validate_independent_review.py`, passing the expected base SHA, head SHA, and diff mode. Bind the exact slice supplied to the subagent with repeated `--expected-included-path` arguments and bind paths intentionally withheld with repeated `--expected-omitted-path` arguments. The reported included and omitted sets must match those two expected sets separately. Discard invalid or non-completed findings.
+Validate the payload with `scripts/validate_independent_review.py`, passing the expected base SHA, head SHA, and diff mode. Bind the exact slice supplied to the subagent with repeated `--expected-included-path` arguments and bind paths intentionally withheld with repeated `--expected-omitted-path` arguments. A completed review must match those sets separately; a non-completed review must move their union into `omitted_paths` to disclose that none of the planned scope received valid independent coverage. Discard invalid or non-completed findings.

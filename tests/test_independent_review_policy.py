@@ -87,10 +87,28 @@ class IndependentReviewPolicyTests(unittest.TestCase):
         payload.update(
             status="unavailable",
             included_paths=[],
+            omitted_paths=["src/example.py"],
             findings=[],
             evidence_gaps=["Subagent capability was unavailable; used single-agent review."],
         )
-        self.module.validate_independent_review(payload)
+        self.module.validate_independent_review(
+            payload,
+            expected_included_paths=["src/example.py"],
+        )
+
+    def test_failed_subagent_cannot_hide_expected_path(self):
+        payload = self._payload()
+        payload.update(
+            status="failed",
+            included_paths=[],
+            findings=[],
+            evidence_gaps=["Subagent execution failed; used single-agent review."],
+        )
+        with self.assertRaisesRegex(ValueError, "expected review scope"):
+            self.module.validate_independent_review(
+                payload,
+                expected_included_paths=["src/example.py"],
+            )
 
     def test_failed_subagent_output_cannot_retain_findings(self):
         payload = self._payload()

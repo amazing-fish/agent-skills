@@ -167,10 +167,19 @@ def validate_independent_review(
             raise ValueError(
                 "expected_included_paths and expected_omitted_paths must not overlap"
             )
-        if set(included_paths) != set(expected_included_paths):
-            raise ValueError("included_paths do not match expected_included_paths")
-        if set(omitted_paths) != set(expected_omitted_paths):
-            raise ValueError("omitted_paths do not match expected_omitted_paths")
+        if status == "completed":
+            if set(included_paths) != set(expected_included_paths):
+                raise ValueError("included_paths do not match expected_included_paths")
+            if set(omitted_paths) != set(expected_omitted_paths):
+                raise ValueError("omitted_paths do not match expected_omitted_paths")
+        else:
+            expected_unreviewed_paths = set(expected_included_paths) | set(
+                expected_omitted_paths
+            )
+            if set(omitted_paths) != expected_unreviewed_paths:
+                raise ValueError(
+                    "omitted_paths must cover the expected review scope when status is not completed"
+                )
     if not isinstance(payload["findings"], list):
         raise ValueError("findings must be a list")
 
