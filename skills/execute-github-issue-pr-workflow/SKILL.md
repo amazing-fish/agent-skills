@@ -15,7 +15,7 @@ Treat GitHub remote state as authoritative. Preserve unrelated work and never co
 4. Use neutral links such as `Refs #N` unless automatic Issue closure is explicitly authorized.
 5. Use default approval mode unless the user explicitly enables automatic staging mode:
    - **Default:** stop after review and diff evidence; merging requires a later explicit approval for the current PR and exact HEAD, and only then may the next Issue start.
-   - **Automatic staging:** a reviewed low-risk PR stays open and unmerged while the next Issue starts. Stop for human direction when risk appears, PRs conflict, the vision is complete, or the actionable queue is empty.
+   - **Automatic staging:** a reviewed low-risk PR stays open and unmerged while the next Issue starts. Branch independent follow-ups from the current default branch; stack only genuine dependencies and record their order. Stop for human direction when risk appears, PRs conflict, the vision is complete, or the actionable queue is empty.
 
 ## Implement and publish
 
