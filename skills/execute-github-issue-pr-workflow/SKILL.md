@@ -128,7 +128,7 @@ After every two completed, non-shelved feature Issues, perform a documentation c
 Stop and report instead of guessing when:
 
 - explicit merge or upstream-submission authorization is missing;
-- `explain-diff-for-human-review` is unavailable or its required review artifact cannot be produced;
+- when attempting report generation, staging, or merge, `explain-diff-for-human-review` is unavailable or its required review artifact cannot be produced;
 - the current HEAD has no completed Codex GitHub review, even if the request was acknowledged or the wait timed out;
 - automatic staging reaches a risky report, conflicting/ambiguous PR stack, completed vision, or empty actionable Issue queue;
 - checks are failing or review feedback remains unresolved;
