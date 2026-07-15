@@ -1,13 +1,4 @@
 interface:
-  display_name: "GitHub Issue\u2013PR \u95ED\u73AF"
-  short_description: "\u6309\u65E2\u5B9A\u89C4\u5219\u63A8\u8FDB Issue\u3001PR\u3001\
-    \u8BC4\u5BA1\u3001\u5408\u5E76\u4E0E\u6587\u6863\u66F4\u65B0"
-  default_prompt: "\u6309\u6211\u7684 GitHub Issue\u2013PR \u95ED\u73AF\u6D41\u7A0B\
-    \u63A8\u8FDB\u5F53\u524D\u4ED3\u5E93\u4EFB\u52A1\u3002"
-policy:
-  products:
-  - chatgpt
-  - codex
-  - api
-  - atlas
-  allow_implicit_invocation: true
+  display_name: "GitHub Issue–PR 闭环"
+  short_description: "按既定规则推进 Issue、PR、评审、合并与文档更新"
+  default_prompt: "使用 $execute-github-issue-pr-workflow 按我的 GitHub Issue–PR 闭环流程推进当前仓库任务。"
