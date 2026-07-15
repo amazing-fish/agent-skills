@@ -32,6 +32,17 @@ skills/
 - 上游许可证：Apache-2.0
 - 本地修订：[#2](../../issues/2) 报告输出路径；[#3](../../issues/3) 大规模 diff；[#7](../../issues/7) GitHub 固定链接证据策略
 
+
+### execute-github-issue-pr-workflow
+
+按受控闭环推进 GitHub Issue、实现、PR、Codex Review、评论修复、人工 diff 审查、合并授权和文档更新。
+
+- 定义：[skills/execute-github-issue-pr-workflow/SKILL.md](skills/execute-github-issue-pr-workflow/SKILL.md)
+- 默认模式：人工批准当前 PR 合入并进入下一 Issue
+- 自动暂存模式：低风险 PR 保持未合并并继续推进，最终由人类统一决定方向
+- 评审节拍：PR 提交 6 分钟后刷新，未触发时仅补一次 `@codex review`
+
+
 ## 管理约定
 
 1. 外部 Skill 首次引入时保持内容语义不变，并在 `sources.lock.json` 同时记录上游 blob SHA 与导入版本。
