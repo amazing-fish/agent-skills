@@ -24,6 +24,8 @@ Use **default approval mode** unless the user explicitly enables **automatic sta
 - **Default approval mode:** after review gates pass, generate the human-readable diff report and ask for one explicit decision that authorizes both merging the exact current HEAD and proceeding to the next Issue. Do not merge or start the next Issue without that approval.
 - **Automatic staging mode:** after review gates pass, generate the human-readable diff report. If it reports no merge risk and no blocking decision, leave the PR open and ready as `staged`, keep its Issue open, record its HEAD and dependencies, and continue to the next Issue without per-PR approval or merge. This mode never means auto-merge.
 
+Treat `no merge risk` narrowly: the report conclusion is `可以合入`; no confirmed `严重`、`高`、or `中` finding remains; required checks and validation are complete; no review thread, scope decision, migration decision, or dependency/merge-order ambiguity remains. Record non-blocking `低` or `提示` follow-ups, but do not let them hide a merge-affecting decision.
+
 In automatic staging mode, branch independent Issues from the current default branch so each PR remains independently reviewable. Use an explicit stacked-PR chain only when the next Issue genuinely depends on unmerged behavior; record the base/head relationship and required merge order.
 
 Stop automatic staging and require human direction when the vision is complete, the actionable Issue queue is empty, the diff report identifies merge risk or a decision, accumulated PRs conflict, or the next work would materially change scope. Present the staged PRs, exact HEADs, dependency/merge order, risks, and options to merge, revise, drop, rebase, or redefine the vision.
@@ -122,7 +124,7 @@ Never merge a staged PR merely because automatic staging mode is enabled. Merge 
 
 Update docs immediately when changes affect public commands/options, storage layout, schema or wire format, migration behavior, defaults, security/safety boundaries, operational sequence, or user-visible status semantics. Describe the current implementation, not the history of review fixes.
 
-After every two completed, non-shelved feature Issues, perform a documentation checkpoint: refresh roadmap/status docs, show the current observable effect, reconcile related Issues, and report what is ready next. Documentation-only or shelved privacy work does not count unless the user says otherwise.
+After every two merged, non-shelved feature Issues in default mode, or every two newly staged feature Issues in automatic staging mode, perform a documentation checkpoint: refresh roadmap/status docs, show the current observable effect, reconcile related Issues, and report what is ready next. In automatic staging mode, label unmerged behavior as `staged` rather than landed or released, and link the exact PR HEADs. Documentation-only or shelved privacy work does not count unless the user says otherwise.
 
 ## Stop conditions
 
