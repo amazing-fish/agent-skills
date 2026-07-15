@@ -108,8 +108,13 @@ def _validate_finding(finding: Any, *, index: int, head_sha: str, included_paths
     if isinstance(line_end, bool) or not isinstance(line_end, int) or line_end < line_start:
         raise ValueError(f"{name}.line_end must be an integer at or after line_start")
 
-    if head_sha.lower() not in finding["evidence_ref"].lower():
-        raise ValueError(f"{name}.evidence_ref must be pinned to head_sha")
+    expected_evidence_ref = (
+        f"{finding['path']}@{head_sha}:L{line_start}-L{line_end}"
+    )
+    if finding["evidence_ref"] != expected_evidence_ref:
+        raise ValueError(
+            f"{name}.evidence_ref must exactly match path, head_sha, and line range"
+        )
 
     recommended = _require_string_list(
         finding["recommended_validation"],

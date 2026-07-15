@@ -48,6 +48,6 @@ Return one JSON object and no prose:
 
 Allowed statuses are `completed`, `unavailable`, `failed`, `timed_out`, and `skipped`. A non-completed status must return empty `included_paths` and `findings`, plus at least one `evidence_gaps` entry explaining that the main agent used the single-agent fallback.
 
-`severity` is one of `critical`, `high`, `medium`, `low`, or `info`; `confidence` is `high`, `medium`, or `low`. Every finding must reference an included path and an evidence reference pinned to `head_sha`.
+`severity` is one of `critical`, `high`, `medium`, `low`, or `info`; `confidence` is `high`, `medium`, or `low`. Every finding must use the exact canonical evidence reference `<path>@<head_sha>:L<line_start>-L<line_end>` so the path, fixed version, and line range cannot drift independently.
 
 Validate the payload with `scripts/validate_independent_review.py`, passing the expected base SHA, head SHA, and diff mode. Discard invalid or non-completed findings.

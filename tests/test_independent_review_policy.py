@@ -101,6 +101,22 @@ class IndependentReviewPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "head_sha"):
             self.module.validate_independent_review(payload)
 
+    def test_finding_evidence_path_must_match_finding_path(self):
+        payload = self._payload()
+        payload["findings"][0]["evidence_ref"] = (
+            f"docs/other.md@{'b' * 40}:L10-L12"
+        )
+        with self.assertRaisesRegex(ValueError, "path"):
+            self.module.validate_independent_review(payload)
+
+    def test_finding_evidence_lines_must_match_finding_lines(self):
+        payload = self._payload()
+        payload["findings"][0]["evidence_ref"] = (
+            f"src/example.py@{'b' * 40}:L1-L2"
+        )
+        with self.assertRaisesRegex(ValueError, "line range"):
+            self.module.validate_independent_review(payload)
+
     def test_cli_validates_machine_readable_payload(self):
         payload = self._payload()
         with tempfile.TemporaryDirectory() as temp:
