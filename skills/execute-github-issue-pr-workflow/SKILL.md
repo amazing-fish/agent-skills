@@ -14,7 +14,7 @@ Treat GitHub remote state as authoritative. Preserve unrelated work and never co
 3. Reuse an existing Issue when it covers the work; otherwise create one before non-trivial implementation. Keep scope and acceptance criteria bounded.
 4. Use neutral links such as `Refs #N` unless automatic Issue closure is explicitly authorized.
 5. Use default approval mode unless the user explicitly enables automatic staging mode:
-   - **Default:** stop after review and diff evidence; merging requires a later explicit approval for the current PR, and only then may the next Issue start.
+   - **Default:** stop after review and diff evidence; merging requires a later explicit approval for the current PR and exact HEAD, and only then may the next Issue start.
    - **Automatic staging:** a reviewed low-risk PR stays open and unmerged while the next Issue starts. Stop for human direction when risk appears, PRs conflict, the vision is complete, or the actionable queue is empty.
 
 ## Implement and publish
@@ -56,9 +56,9 @@ Require all of the following:
 - validation and docs match the current code;
 - the installed `explain-diff-for-human-review` skill produces a report for the current diff.
 
-In default mode, present the report and request approval; merge only in a later user turn that explicitly authorizes the current PR. In automatic staging mode, stage only when the report says `可以合入` with no confirmed medium-or-higher risk or unresolved decision. Automatic staging never authorizes merging.
+In default mode, present the report for the current HEAD and request approval naming that PR and HEAD; any HEAD change invalidates the report and approval. Merge only in a later user turn. In automatic staging mode, stage only when the report says `可以合入` with no confirmed medium-or-higher risk or unresolved decision. Automatic staging never authorizes merging.
 
-Immediately before an authorized merge, recheck the PR state, HEAD, checks, threads, and mergeability. Never bypass protection or force-push.
+Immediately before an authorized merge, require HEAD to equal the reported and approved HEAD, then recheck PR state, checks, threads, and mergeability. Never bypass protection or force-push.
 
 ## Reconcile and continue
 
