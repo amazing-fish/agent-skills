@@ -31,7 +31,7 @@ Treat GitHub remote state as authoritative. Preserve unrelated work and never co
 For each new ready-for-review PR HEAD:
 
 1. Record the PR URL, HEAD, and existing Codex 👍 reactions; previous reactions are stale for this cycle. Then set exactly one **one-shot 6-minute timer**. Do not poll while it is active.
-2. When it fires, refresh the PR once: read the Codex state or reactions on the PR body, conversation and inline comments, unresolved threads, checks, mergeability, and current HEAD.
+2. When it fires, refresh the PR once: read the Codex state or reactions on the PR body, review decisions including requested changes, conversation and inline comments, unresolved threads, checks, mergeability, and current HEAD.
 3. Classify that single refresh:
    - **Passed:** a new 👍 from the repository's Codex bot on the PR during this cycle is sufficient. Do not require a commit review, `commit_id`, or SHA binding. Continue only if no actionable feedback or relevant failed check remains; document any explicit check waiver.
    - **In progress:** do not mention the bot again; set one new one-shot 6-minute timer.
@@ -52,7 +52,7 @@ Require all of the following:
 
 - acceptance criteria and all relevant checks pass or have an explicit documented waiver;
 - the current review cycle receives a new Codex-bot 👍 on the PR;
-- no blocking or unresolved feedback, conflict, or scope decision remains;
+- no blocking review decision, unresolved feedback, conflict, or scope decision remains;
 - validation and docs match the current code;
 - the installed `explain-diff-for-human-review` skill produces a report for the current diff.
 
@@ -65,5 +65,5 @@ Immediately before an authorized merge, require HEAD to equal the reported and a
 1. Verify the merge landed and return clickable PR and merge-commit URLs.
 2. Close or update the Issue only within the user's authorization; return its URL and residual work.
 3. Update docs when commands, contracts, schemas, defaults, operations, safety boundaries, or user-visible behavior change.
-4. After every two merged feature Issues, or two staged feature Issues in automatic staging mode, refresh roadmap/status docs and reconcile related Issues.
+4. After every two merged feature Issues, or two staged feature Issues in automatic staging mode, refresh roadmap/status docs and reconcile related Issues. Label unmerged work as `staged` and link its PR and exact HEAD.
 5. Stop instead of guessing when authorization, the diff skill, review success, checks, permissions, conflicts, credentials, or a material scope decision blocks progress.
