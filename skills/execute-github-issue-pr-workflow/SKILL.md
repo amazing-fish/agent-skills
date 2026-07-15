@@ -30,10 +30,10 @@ Treat GitHub remote state as authoritative. Preserve unrelated work and never co
 
 For each new ready-for-review PR HEAD:
 
-1. Record the PR URL, HEAD, and existing Codex 👍 reactions; previous reactions are stale for this cycle. Then set exactly one **one-shot 6-minute timer**. Do not poll while it is active.
-2. When it fires, refresh the PR once. If HEAD differs from the recorded HEAD, discard this cycle, snapshot reactions again, and start one new timer. Otherwise read the Codex state or reactions on the PR body, review decisions including requested changes, conversation and inline comments, unresolved threads, checks, and mergeability.
+1. Record the PR URL and HEAD, then set exactly one **one-shot 6-minute timer**. Do not poll while it is active.
+2. When it fires, refresh the PR once. If HEAD differs from the recorded HEAD, discard this cycle and start one new timer. Otherwise read the Codex state or reactions on the PR body, review decisions including requested changes, conversation and inline comments, unresolved threads, checks, and mergeability.
 3. Classify that single refresh:
-   - **Passed:** a new 👍 from the repository's Codex bot on the PR during this cycle is sufficient. Do not require a commit review, `commit_id`, or SHA binding. Continue only if no actionable feedback or relevant failed check remains; document any explicit check waiver.
+   - **Passed:** the repository's current Codex-bot 👍 on the PR is sufficient. Do not require a newly created reaction, commit review, `commit_id`, or SHA binding. This assumes the configured bot maintains current PR-level state after pushes; stop if it does not. Continue only if no actionable feedback or relevant failed check remains; document any explicit check waiver.
    - **In progress:** do not mention the bot again; set one new one-shot 6-minute timer.
    - **Not triggered:** post `@codex review` once for this review cycle, return the comment URL, then set one new one-shot 6-minute timer.
    - **Findings or failures:** fix in scope issues on the same branch, test, push, return the new commit URL, and start a fresh one-shot 6-minute review cycle.
@@ -51,14 +51,14 @@ For each new ready-for-review PR HEAD:
 Require all of the following:
 
 - acceptance criteria and all relevant checks pass or have an explicit documented waiver;
-- the current review cycle receives a new Codex-bot 👍 on the PR;
+- the PR currently shows the Codex bot's 👍;
 - no blocking review decision, unresolved feedback, conflict, or scope decision remains;
 - validation and docs match the current code;
 - the installed `explain-diff-for-human-review` skill produces a report for the current diff.
 
-In default mode, present the report for the current HEAD and request approval naming that PR and HEAD; any HEAD change invalidates the report and approval. Merge only in a later user turn. In automatic staging mode, stage only when the report says `可以合入` with no confirmed medium-or-higher risk or unresolved decision. Automatic staging never authorizes merging.
+In default mode, present the report for the current base and HEAD and request approval naming that PR, base SHA, and HEAD SHA; any base or HEAD change invalidates the report and approval. Merge only in a later user turn. In automatic staging mode, stage only when the report says `可以合入` with no confirmed medium-or-higher risk or unresolved decision. Automatic staging never authorizes merging.
 
-Immediately before an authorized merge, require HEAD to equal the reported and approved HEAD, then recheck PR state, checks, threads, and mergeability. Never bypass protection or force-push.
+Immediately before an authorized merge, require base and HEAD to equal the reported and approved SHAs, then recheck PR state, checks, threads, and mergeability. Never bypass protection or force-push.
 
 ## Reconcile and continue
 
