@@ -40,7 +40,7 @@ skills/
 - 定义：[skills/execute-github-issue-pr-workflow/SKILL.md](skills/execute-github-issue-pr-workflow/SKILL.md)
 - 默认模式：人工批准当前 PR 合入并进入下一 Issue
 - 自动暂存模式：低风险 PR 保持未合并并继续推进，最终由人类统一决定方向
-- 评审节拍：PR 提交 6 分钟后刷新，未触发时仅补一次 `@codex review`
+- 评审节拍：每次只设一个一次性 6 分钟定时器；触发后刷新一次，以 PR 上 Codex 机器人的 👍 为通过信号
 
 
 ## 管理约定
