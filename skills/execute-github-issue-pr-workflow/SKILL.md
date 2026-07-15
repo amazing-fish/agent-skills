@@ -10,8 +10,8 @@ Treat GitHub remote state as authoritative. Preserve unrelated work and never co
 ## Establish scope and mode
 
 1. Inspect repository instructions, ownership, default branch, working tree, relevant Issues/PRs, checks, and docs.
-2. For a user-owned repository, create a ready-for-review PR without extra approval. For external upstreams, work in the user's fork and obtain approval before opening a Draft upstream PR.
-3. Reuse an existing Issue when it covers the work; otherwise create one before non-trivial implementation. Keep scope and acceptance criteria bounded.
+2. For a user-owned repository, create a ready-for-review PR without extra approval. For external upstreams, work only in the user's fork and obtain approval before creating an upstream Issue, opening a Draft upstream PR, or otherwise contacting maintainers.
+3. Reuse an existing Issue when it covers the work; otherwise create one before non-trivial implementation where authorized. Keep scope and acceptance criteria bounded.
 4. Use neutral links such as `Refs #N` unless automatic Issue closure is explicitly authorized.
 5. Use default approval mode unless the user explicitly enables automatic staging mode:
    - **Default:** stop after review and diff evidence; merging requires a later explicit approval for the current PR and exact HEAD, and only then may the next Issue start.
@@ -33,7 +33,7 @@ For each new ready-for-review PR HEAD:
 1. Record the PR URL, HEAD, and existing Codex 👍 reactions; previous reactions are stale for this cycle. Then set exactly one **one-shot 6-minute timer**. Do not poll while it is active.
 2. When it fires, refresh the PR once: read the Codex state or reactions on the PR body, conversation and inline comments, unresolved threads, checks, mergeability, and current HEAD.
 3. Classify that single refresh:
-   - **Passed:** a new 👍 from the repository's Codex bot on the PR during this cycle is sufficient. Do not require a commit review, `commit_id`, or SHA binding. Continue only if no actionable feedback or failing required check remains.
+   - **Passed:** a new 👍 from the repository's Codex bot on the PR during this cycle is sufficient. Do not require a commit review, `commit_id`, or SHA binding. Continue only if no actionable feedback or relevant failed check remains; document any explicit check waiver.
    - **In progress:** do not mention the bot again; set one new one-shot 6-minute timer.
    - **Not triggered:** post `@codex review` once for this review cycle, return the comment URL, then set one new one-shot 6-minute timer.
    - **Findings or failures:** fix in scope issues on the same branch, test, push, return the new commit URL, and start a fresh one-shot 6-minute review cycle.
@@ -50,7 +50,7 @@ For each new ready-for-review PR HEAD:
 
 Require all of the following:
 
-- acceptance criteria and required checks pass;
+- acceptance criteria and all relevant checks pass or have an explicit documented waiver;
 - the current review cycle receives a new Codex-bot 👍 on the PR;
 - no blocking or unresolved feedback, conflict, or scope decision remains;
 - validation and docs match the current code;
