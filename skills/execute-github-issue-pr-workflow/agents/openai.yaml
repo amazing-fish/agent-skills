@@ -1,0 +1,13 @@
+interface:
+  display_name: "GitHub Issue\u2013PR \u95ED\u73AF"
+  short_description: "\u6309\u65E2\u5B9A\u89C4\u5219\u63A8\u8FDB Issue\u3001PR\u3001\
+    \u8BC4\u5BA1\u3001\u5408\u5E76\u4E0E\u6587\u6863\u66F4\u65B0"
+  default_prompt: "\u6309\u6211\u7684 GitHub Issue\u2013PR \u95ED\u73AF\u6D41\u7A0B\
+    \u63A8\u8FDB\u5F53\u524D\u4ED3\u5E93\u4EFB\u52A1\u3002"
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true
