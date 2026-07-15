@@ -63,12 +63,12 @@ Never merge a PR in the same assistant turn in which it was created. Waiting, po
 
 For every new final PR HEAD:
 
-1. Record the exact HEAD SHA, PR creation or ready-for-review time, existing reviews, and whether `@codex review` has already been posted for this HEAD.
+1. Record the exact HEAD SHA, the time this HEAD was first observed for the current cycle (`head_observed_at`), existing reviews, and whether `@codex review` has already been posted for this HEAD.
 2. Wait 6 minutes after submitting the ready-for-review PR, then refresh GitHub PR reviews, review comments, conversation comments, checks, and robot status.
 3. Classify the refreshed state:
    - **Review not triggered:** if neither an in-progress signal nor a Codex review for this HEAD exists, post `@codex review` exactly once for this HEAD, record the comment URL/time, wait 6 minutes, and refresh again.
    - **Review in progress:** do not post another mention. Wait another 6 minutes and refresh again.
-   - **Review completed:** continue immediately. Prefer matching the review's `commit_id`; if unavailable, require submission after the PR creation, ready-for-review, or fallback request time and re-confirm that HEAD has not changed.
+   - **Review completed:** continue immediately. Prefer an exact match on the review's `commit_id`. If `commit_id` is unavailable, require the review submission to postdate this cycle's `head_observed_at` or later fallback request time, and re-confirm that HEAD has not changed.
 4. A completed Codex review with no findings is a valid result. Absence of comments, elapsed time, or an acknowledgement alone is not completion.
 5. If the execution environment reaches its waiting limit, report `Codex review pending` with PR URL, HEAD, submission time, fallback request URL/time if used, observed robot state, and last refresh time. Stop or resume later; never infer approval from timeout.
 6. After the matching review arrives, re-read the latest HEAD and check:
