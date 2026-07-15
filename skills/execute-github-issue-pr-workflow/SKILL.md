@@ -30,10 +30,10 @@ Treat GitHub remote state as authoritative. Preserve unrelated work and never co
 
 For each new ready-for-review PR HEAD:
 
-1. Record the PR URL and HEAD, then set exactly one **one-shot 6-minute timer**. Do not poll while it is active.
+1. Record the PR URL, HEAD, and existing Codex 👍 reactions; previous reactions are stale for this cycle. Then set exactly one **one-shot 6-minute timer**. Do not poll while it is active.
 2. When it fires, refresh the PR once: read the Codex state or reactions on the PR body, conversation and inline comments, unresolved threads, checks, mergeability, and current HEAD.
 3. Classify that single refresh:
-   - **Passed:** a 👍 from the repository's Codex bot on the PR is sufficient. Do not require a commit review, `commit_id`, or SHA binding. Continue only if no actionable feedback or failing required check remains.
+   - **Passed:** a new 👍 from the repository's Codex bot on the PR during this cycle is sufficient. Do not require a commit review, `commit_id`, or SHA binding. Continue only if no actionable feedback or failing required check remains.
    - **In progress:** do not mention the bot again; set one new one-shot 6-minute timer.
    - **Not triggered:** post `@codex review` once for this review cycle, return the comment URL, then set one new one-shot 6-minute timer.
    - **Findings or failures:** fix in scope issues on the same branch, test, push, return the new commit URL, and start a fresh one-shot 6-minute review cycle.
@@ -51,7 +51,7 @@ For each new ready-for-review PR HEAD:
 Require all of the following:
 
 - acceptance criteria and required checks pass;
-- the Codex bot gives 👍 on the PR;
+- the current review cycle receives a new Codex-bot 👍 on the PR;
 - no blocking or unresolved feedback, conflict, or scope decision remains;
 - validation and docs match the current code;
 - the installed `explain-diff-for-human-review` skill produces a report for the current diff.
