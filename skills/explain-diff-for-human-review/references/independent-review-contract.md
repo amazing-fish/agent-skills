@@ -50,4 +50,4 @@ Allowed statuses are `completed`, `unavailable`, `failed`, `timed_out`, and `ski
 
 `severity` is one of `critical`, `high`, `medium`, `low`, or `info`; `confidence` is `high`, `medium`, or `low`. Every finding must use the exact canonical evidence reference `<path>@<head_sha>:L<line_start>-L<line_end>` so the path, fixed version, and line range cannot drift independently.
 
-Validate the payload with `scripts/validate_independent_review.py`, passing the expected base SHA, head SHA, diff mode, and every changed path through repeated `--expected-path` arguments. The union of `included_paths` and `omitted_paths` must equal that fixed path set. Discard invalid or non-completed findings.
+Validate the payload with `scripts/validate_independent_review.py`, passing the expected base SHA, head SHA, and diff mode. Bind the exact slice supplied to the subagent with repeated `--expected-included-path` arguments and bind paths intentionally withheld with repeated `--expected-omitted-path` arguments. The reported included and omitted sets must match those two expected sets separately. Discard invalid or non-completed findings.

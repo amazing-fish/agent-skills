@@ -86,7 +86,7 @@ GitHub 仓库采用以下特例：
 3. 启用时读取 [independent-review-contract.md](references/independent-review-contract.md)。按规模准备输入：`small` 提供完整的相关改动集；`standard` 优先高风险和代表性文件并列出省略项；`large` 只在确有价值时提供有界的高风险切片，不声称完整覆盖。
 4. 只提供固定版本证据、patch 元数据、相关测试和约束；不要提供主 Agent 的预期结论、怀疑点、拟议修复或报告草稿。
 5. 明确要求子 Agent 只读：不修改产品代码、不提交 Review、不批准合入、不作最终判断。其输出只能是约定的 JSON 发现。
-6. 如果包含 `scripts/validate_independent_review.py`，使用预期 base SHA、head SHA、规模模式和完整改动路径集合校验输出；`included_paths` 与 `omitted_paths` 的并集必须等于该固定集合。丢弃无效或非 `completed` 状态的发现，并执行单 Agent 回退。
+6. 如果包含 `scripts/validate_independent_review.py`，使用预期 base SHA、head SHA、规模模式、实际提供给子 Agent 的 included 路径集合和明确 withheld 的 omitted 路径集合校验输出；两组路径必须分别精确匹配，不能只校验并集。丢弃无效或非 `completed` 状态的发现，并执行单 Agent 回退。
 7. 主 Agent 逐项在固定 `head_sha` 上复核证据、去重并负责最终 HTML。无法复核的内容只能标记为推断或证据缺口，不能升级为已确认缺陷。
 8. 报告披露是否请求独立审查、执行状态、固定 SHA、规模模式、覆盖和省略路径、单 Agent 回退及证据缺口。子 Agent 不可用不是报告失败。
 

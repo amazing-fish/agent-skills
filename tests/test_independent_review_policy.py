@@ -68,7 +68,7 @@ class IndependentReviewPolicyTests(unittest.TestCase):
             expected_base_sha="a" * 40,
             expected_head_sha="b" * 40,
             expected_mode="small",
-            expected_paths=["src/example.py"],
+            expected_included_paths=["src/example.py"],
         )
 
     def test_standard_review_records_omitted_paths(self):
@@ -78,7 +78,8 @@ class IndependentReviewPolicyTests(unittest.TestCase):
         self.module.validate_independent_review(
             payload,
             expected_mode="standard",
-            expected_paths=["src/example.py", "vendor/generated.js"],
+            expected_included_paths=["src/example.py"],
+            expected_omitted_paths=["vendor/generated.js"],
         )
 
     def test_unavailable_subagent_requires_disclosed_single_agent_fallback(self):
@@ -122,12 +123,22 @@ class IndependentReviewPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "line range"):
             self.module.validate_independent_review(payload)
 
-    def test_declared_coverage_must_match_expected_paths(self):
+    def test_declared_included_paths_must_match_expected_slice(self):
         payload = self._payload()
-        with self.assertRaisesRegex(ValueError, "declared coverage"):
+        with self.assertRaisesRegex(ValueError, "expected_included_paths"):
             self.module.validate_independent_review(
                 payload,
-                expected_paths=["src/example.py", "docs/other.md"],
+                expected_included_paths=["src/example.py", "docs/other.md"],
+            )
+
+    def test_omitted_path_cannot_be_claimed_as_included(self):
+        payload = self._payload(diff_mode="standard")
+        payload["included_paths"].append("vendor/generated.js")
+        with self.assertRaisesRegex(ValueError, "expected_included_paths"):
+            self.module.validate_independent_review(
+                payload,
+                expected_included_paths=["src/example.py"],
+                expected_omitted_paths=["vendor/generated.js"],
             )
 
     def test_cli_validates_machine_readable_payload(self):
@@ -146,7 +157,7 @@ class IndependentReviewPolicyTests(unittest.TestCase):
                     "b" * 40,
                     "--expected-mode",
                     "small",
-                    "--expected-path",
+                    "--expected-included-path",
                     "src/example.py",
                 ],
                 check=True,

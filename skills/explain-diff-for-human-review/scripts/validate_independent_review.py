@@ -130,7 +130,8 @@ def validate_independent_review(
     expected_base_sha: str | None = None,
     expected_head_sha: str | None = None,
     expected_mode: str | None = None,
-    expected_paths: list[str] | None = None,
+    expected_included_paths: list[str] | None = None,
+    expected_omitted_paths: list[str] | None = None,
 ) -> None:
     if not isinstance(payload, dict):
         raise ValueError("payload must be an object")
@@ -153,11 +154,23 @@ def validate_independent_review(
 
     if set(included_paths) & set(omitted_paths):
         raise ValueError("included_paths and omitted_paths must not overlap")
-    if expected_paths is not None:
-        expected_paths = _require_string_list(expected_paths, "expected_paths")
-        declared_paths = set(included_paths) | set(omitted_paths)
-        if declared_paths != set(expected_paths):
-            raise ValueError("declared coverage does not match expected_paths")
+    if expected_included_paths is not None or expected_omitted_paths is not None:
+        expected_included_paths = _require_string_list(
+            expected_included_paths or [],
+            "expected_included_paths",
+        )
+        expected_omitted_paths = _require_string_list(
+            expected_omitted_paths or [],
+            "expected_omitted_paths",
+        )
+        if set(expected_included_paths) & set(expected_omitted_paths):
+            raise ValueError(
+                "expected_included_paths and expected_omitted_paths must not overlap"
+            )
+        if set(included_paths) != set(expected_included_paths):
+            raise ValueError("included_paths do not match expected_included_paths")
+        if set(omitted_paths) != set(expected_omitted_paths):
+            raise ValueError("omitted_paths do not match expected_omitted_paths")
     if not isinstance(payload["findings"], list):
         raise ValueError("findings must be a list")
 
@@ -201,10 +214,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-head-sha")
     parser.add_argument("--expected-mode", choices=sorted(DIFF_MODES))
     parser.add_argument(
-        "--expected-path",
+        "--expected-included-path",
         action="append",
-        dest="expected_paths",
-        help="Expected changed path; repeat to bind the complete review scope",
+        dest="expected_included_paths",
+        help="Expected reviewed path; repeat to bind the included review slice",
+    )
+    parser.add_argument(
+        "--expected-omitted-path",
+        action="append",
+        dest="expected_omitted_paths",
+        help="Expected omitted path; repeat to bind the omitted review slice",
     )
     return parser
 
@@ -221,7 +240,8 @@ def main(argv: list[str] | None = None) -> int:
             expected_base_sha=args.expected_base_sha,
             expected_head_sha=args.expected_head_sha,
             expected_mode=args.expected_mode,
-            expected_paths=args.expected_paths,
+            expected_included_paths=args.expected_included_paths,
+            expected_omitted_paths=args.expected_omitted_paths,
         )
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"invalid independent review: {exc}", file=sys.stderr)
