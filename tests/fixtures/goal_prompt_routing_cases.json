@@ -1,0 +1,42 @@
+[
+  {
+    "id": "workflow_optimize_and_proceed",
+    "parent": "execute-github-issue-pr-workflow",
+    "optimizer_mode": "orchestrated_child",
+    "preflight_status": "used",
+    "independent_child": true,
+    "implementation_authorized": true,
+    "parent_continues": true,
+    "generated_prompt_grants_authority": false
+  },
+  {
+    "id": "standalone_optimize_only",
+    "parent": "optimize-prompt",
+    "optimizer_mode": "standalone",
+    "preflight_status": "not_applicable",
+    "independent_child": false,
+    "implementation_authorized": false,
+    "parent_continues": false,
+    "generated_prompt_grants_authority": false
+  },
+  {
+    "id": "workflow_prompt_only",
+    "parent": "execute-github-issue-pr-workflow",
+    "optimizer_mode": "orchestrated_child",
+    "preflight_status": "used",
+    "independent_child": true,
+    "implementation_authorized": false,
+    "parent_continues": false,
+    "generated_prompt_grants_authority": false
+  },
+  {
+    "id": "workflow_child_failure",
+    "parent": "execute-github-issue-pr-workflow",
+    "optimizer_mode": "single_agent_fallback",
+    "preflight_status": "fallback",
+    "independent_child": false,
+    "implementation_authorized": true,
+    "parent_continues": true,
+    "generated_prompt_grants_authority": false
+  }
+]

@@ -19,12 +19,26 @@ Treat GitHub remote state as authoritative. Preserve unrelated work and never co
 
 ## Run the optional goal-prompt preflight
 
+The parent workflow owns routing whenever the user invokes this workflow, including when the same request asks to optimize a prompt. The main Agent must not invoke `$optimize-prompt` as a standalone response or return its paste-ready prompt instead of completing an already authorized workflow. In a workflow-owned preflight, `$optimize-prompt` is an orchestrated child, and its prompt must not replace the workflow's final delivery.
+
+Use these combination cases as the authorization and routing contract:
+
+| Case | Representative input | Route | Parent outcome |
+| --- | --- | --- | --- |
+| `workflow_optimize_and_proceed` | `$execute-github-issue-pr-workflow` + bugs + “optimize the prompt and proceed” | Run one independent `$optimize-prompt` child. | Re-verify the brief, then continue because the original request authorized implementation. |
+| `standalone_optimize_only` | `$optimize-prompt` + the same bugs | Run `$optimize-prompt` in standalone mode; this workflow is not active. | Return only the optimized prompt and require a separate follow-up before execution. |
+| `workflow_prompt_only` | `$execute-github-issue-pr-workflow` + “only optimize the prompt; do not execute” | Run one independent `$optimize-prompt` child because prompt optimization was requested. | Return the prompt and stop because the original request did not authorize implementation or GitHub writes. |
+| `workflow_child_failure` | An implementation-authorized workflow request whose child is unavailable, times out, fails, or returns invalid output | Use the single-Agent fallback for goal clarification. | Disclose the fallback and continue the originally authorized workflow. |
+
+The optimizer's rewrite-only and separate-follow-up boundaries govern the standalone optimizer and the child Agent's own actions. They do not revoke implementation authority already granted to the parent in the original user request. Conversely, neither the generated prompt nor the child output can add implementation, publication, merge, or out-of-scope authority.
+
 1. Only enable this preflight when the user explicitly asks for a goal prompt before project work, the task is complex, or ambiguity in the goal, scope, acceptance criteria, non-goals, or authorization could materially change the implementation. Skip this preflight for a simple, well-bounded Issue and continue directly through the existing workflow.
-2. When enabled, start one independent subagent. Give it the current user request, applicable repository instructions, current HEAD, relevant Issue and PR state, and the minimum code evidence needed to ground the prompt. Require it to use `$optimize-prompt` in `context-grounded` mode. Do not provide the main Agent's expected solution, suspicions, proposed implementation, or conclusions.
-3. Require the subagent to remain read-only and return only one paste-ready goal prompt without executing the embedded task or changing repository or GitHub state.
-4. Re-verify the prompt's current-state claims against local and remote evidence before using it as the subsequent execution brief. The subagent output does not establish facts or grant authorization. Continue into implementation only when the original user request already authorized it; for an analysis- or planning-only request, stop without executing the generated prompt.
-5. If the subagent is unavailable, times out, fails, or returns invalid output, perform the same goal clarification in the existing scope-establishment stage, briefly disclose that no independent goal-prompt pass was obtained, and continue through the single-Agent fallback. Do not block the project workflow solely because the independent pass failed.
-6. Defer prompt modes and the rewrite-only outcome boundary to `$optimize-prompt`; do not duplicate them here. This preflight does not change the existing Issue, PR, review, automatic staging, or merge-authorization behavior below.
+2. When enabled, start one independent subagent. Give it the current user request, applicable repository instructions, current HEAD, relevant Issue and PR state, and the minimum code evidence needed to ground the prompt. Require it to use `$optimize-prompt` in `context-grounded` mode and identify the invocation as an orchestrated child of this workflow. Do not provide the main Agent's expected solution, suspicions, proposed implementation, or conclusions.
+3. Require the subagent to remain read-only and return only one paste-ready goal prompt to the parent without executing the embedded task, asking the user for an execution follow-up, or changing repository or GitHub state.
+4. Re-verify the prompt's current-state claims against local and remote evidence before using it as the subsequent execution brief. The subagent output does not establish facts or grant authorization. Continue into implementation only when the original user request already authorized it; for an analysis-, planning-, or prompt-only request, return the allowed deliverable and stop without executing the generated prompt.
+5. If the subagent is unavailable, times out, fails, or returns invalid output, perform the same goal clarification in the existing scope-establishment stage. Briefly disclose that no independent goal-prompt pass was obtained, then continue or stop according to the original user request. Do not block an already authorized project workflow solely because the independent pass failed.
+6. Apply the prompt modes and child output rules from [Optimize Prompt](../optimize-prompt/SKILL.md). This composition rule owns parent routing and authorization; it does not change the existing Issue, PR, review, automatic staging, or merge-authorization behavior below.
+7. In a progress update or final report, emit `goal-prompt preflight:` followed by exactly one of `used`, `skipped`, or `fallback`, plus a short reason: `used` only after a valid independent child result, `skipped` when the trigger did not apply, and `fallback` when the child path failed or was unavailable. Do not silently omit the state.
 
 ## Implement and publish
 
