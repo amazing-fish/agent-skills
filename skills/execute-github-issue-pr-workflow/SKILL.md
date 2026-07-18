@@ -23,12 +23,14 @@ The parent workflow owns routing whenever the user invokes this workflow, includ
 
 Use these combination cases as the authorization and routing contract:
 
-| Case | Representative input | Route | Parent outcome |
-| --- | --- | --- | --- |
-| `workflow_optimize_and_proceed` | `$execute-github-issue-pr-workflow` + bugs + “optimize the prompt and proceed” | Run one independent `$optimize-prompt` child. | Re-verify the brief, then continue because the original request authorized implementation. |
-| `standalone_optimize_only` | `$optimize-prompt` + the same bugs | Run `$optimize-prompt` in standalone mode; this workflow is not active. | Return only the optimized prompt and require a separate follow-up before execution. |
-| `workflow_prompt_only` | `$execute-github-issue-pr-workflow` + “only optimize the prompt; do not execute” | Run one independent `$optimize-prompt` child because prompt optimization was requested. | Return the prompt and stop because the original request did not authorize implementation or GitHub writes. |
-| `workflow_child_failure` | An implementation-authorized workflow request whose child is unavailable, times out, fails, or returns invalid output | Use the single-Agent fallback for goal clarification. | Disclose the fallback and continue the originally authorized workflow. |
+| Case | Representative input | Route | Preflight | Original implementation authority | Owning Agent outcome |
+| --- | --- | --- | --- | --- | --- |
+| `workflow_optimize_and_proceed` | `$execute-github-issue-pr-workflow` + bugs + “optimize and proceed” | `workflow/orchestrated_child/independent` | `used` | `authorized` | `continue` |
+| `standalone_optimize_only` | `$optimize-prompt` + the same bugs | `optimizer/standalone/no_child` | `not_applicable` | `not_authorized` | `stop` |
+| `workflow_prompt_only` | `$execute-github-issue-pr-workflow` + “only optimize; do not execute” | `workflow/orchestrated_child/independent` | `used` | `not_authorized` | `stop` |
+| `workflow_child_failure` | authorized `$execute-github-issue-pr-workflow` + child unavailable, timed out, failed, or invalid | `workflow/single_agent_fallback/no_child` | `fallback` | `authorized` | `continue` |
+
+Treat the compact cells as normative: `workflow` and `optimizer` name the routing owner; `orchestrated_child/independent` means one read-only `$optimize-prompt` child; authority comes only from the original request. `stop` returns the allowed prompt or analysis deliverable, and standalone optimization still requires a separate follow-up before execution. `continue` happens only after fact re-verification, with the single-Agent fallback disclosed when applicable.
 
 The optimizer's rewrite-only and separate-follow-up boundaries govern the standalone optimizer and the child Agent's own actions. They do not revoke implementation authority already granted to the parent in the original user request. Conversely, neither the generated prompt nor the child output can add implementation, publication, merge, or out-of-scope authority.
 

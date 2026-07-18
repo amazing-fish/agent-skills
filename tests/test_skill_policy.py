@@ -6,6 +6,59 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _routing_case_tuple(case):
+    return (
+        case["parent"],
+        case["optimizer_mode"],
+        case["preflight_status"],
+        case["independent_child"],
+        case["implementation_authorized"],
+        case["parent_continues"],
+        case["generated_prompt_grants_authority"],
+    )
+
+
+def _parse_routing_contract(workflow, optimizer, expected_ids):
+    parent_names = {
+        "workflow": "execute-github-issue-pr-workflow",
+        "optimizer": "optimize-prompt",
+    }
+    child_modes = {"independent": True, "no_child": False}
+    authority_states = {"authorized": True, "not_authorized": False}
+    outcomes = {"continue": True, "stop": False}
+    prompt_grants_authority = not (
+        "neither the generated prompt nor the child output can add"
+        in workflow.lower()
+        and "child output cannot grant" in optimizer.lower()
+    )
+    observed = {}
+
+    for line in workflow.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if not cells or not cells[0].startswith("`"):
+            continue
+        case_id = cells[0].strip("`")
+        if case_id not in expected_ids:
+            continue
+        if len(cells) != 6:
+            raise ValueError(f"Unexpected routing row shape for {case_id}")
+
+        route = cells[2].strip("`").split("/")
+        if len(route) != 3:
+            raise ValueError(f"Unexpected route shape for {case_id}")
+        observed[case_id] = (
+            parent_names[route[0]],
+            route[1],
+            cells[3].strip("`"),
+            child_modes[route[2]],
+            authority_states[cells[4].strip("`")],
+            outcomes[cells[5].strip("`")],
+            prompt_grants_authority,
+        )
+
+    return observed
+
+
 class SkillPolicyTests(unittest.TestCase):
     def test_optimize_prompt_preserves_grounding_and_outcome_boundaries(self):
         skill = (
@@ -50,61 +103,13 @@ class SkillPolicyTests(unittest.TestCase):
             ).read_text(encoding="utf-8")
         )
 
-        expected_cases = {
-            "workflow_optimize_and_proceed": (
-                "execute-github-issue-pr-workflow",
-                "orchestrated_child",
-                "used",
-                True,
-                True,
-                True,
-                False,
-            ),
-            "standalone_optimize_only": (
-                "optimize-prompt",
-                "standalone",
-                "not_applicable",
-                False,
-                False,
-                False,
-                False,
-            ),
-            "workflow_prompt_only": (
-                "execute-github-issue-pr-workflow",
-                "orchestrated_child",
-                "used",
-                True,
-                False,
-                False,
-                False,
-            ),
-            "workflow_child_failure": (
-                "execute-github-issue-pr-workflow",
-                "single_agent_fallback",
-                "fallback",
-                False,
-                True,
-                True,
-                False,
-            ),
-        }
-        observed_cases = {
-            case["id"]: (
-                case["parent"],
-                case["optimizer_mode"],
-                case["preflight_status"],
-                case["independent_child"],
-                case["implementation_authorized"],
-                case["parent_continues"],
-                case["generated_prompt_grants_authority"],
-            )
-            for case in cases
-        }
+        expected_cases = {case["id"]: _routing_case_tuple(case) for case in cases}
+        observed_cases = _parse_routing_contract(
+            workflow,
+            optimizer,
+            expected_cases.keys(),
+        )
         self.assertEqual(expected_cases, observed_cases)
-
-        for case_id in expected_cases:
-            with self.subTest(case_id=case_id):
-                self.assertIn(f"`{case_id}`", workflow)
 
         for required_policy in (
             "The parent workflow owns routing",
@@ -129,6 +134,37 @@ class SkillPolicyTests(unittest.TestCase):
         ):
             with self.subTest(readme_policy=required_policy):
                 self.assertIn(required_policy, readme)
+
+    def test_goal_prompt_routing_contract_detects_outcome_reversals(self):
+        workflow = (
+            ROOT / "skills" / "execute-github-issue-pr-workflow" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        optimizer = (
+            ROOT / "skills" / "optimize-prompt" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        cases = json.loads(
+            (
+                ROOT / "tests" / "fixtures" / "goal_prompt_routing_cases.json"
+            ).read_text(encoding="utf-8")
+        )
+        expected_cases = {case["id"]: _routing_case_tuple(case) for case in cases}
+
+        mutations = (
+            ("`authorized` | `continue` |", "`authorized` | `stop` |"),
+            ("`not_authorized` | `stop` |", "`not_authorized` | `continue` |"),
+        )
+        for original, replacement in mutations:
+            with self.subTest(replacement=replacement):
+                mutated = workflow.replace(original, replacement, 1)
+                self.assertNotEqual(workflow, mutated)
+                self.assertNotEqual(
+                    expected_cases,
+                    _parse_routing_contract(
+                        mutated,
+                        optimizer,
+                        expected_cases.keys(),
+                    ),
+                )
 
     def test_github_diff_policy_is_links_only(self):
         skill = (
