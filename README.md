@@ -32,6 +32,8 @@ skills/
 
 复杂任务或存在会实质改变实现的歧义时，可先由独立子 Agent 生成 goal prompt；简单、范围清楚的 Issue 直接进入现有流程。prompt 只作为执行 brief，事实需要复核，是否继续实现仍只取决于用户原始请求的授权。
 
+组合路由有两种明确模式：`standalone prompt optimization` 由 `optimize-prompt` 直接响应，只返回 prompt 并等待后续执行指令；`workflow-owned preflight` 由 `execute-github-issue-pr-workflow` 启动独立、只读的 optimizer 子 Agent，父工作流复核结果后仅依据 `original user request` 判断继续或停止。子 Agent 的 rewrite-only 边界不会撤销父工作流已有授权，生成的 prompt 也不会新增实现、发布或合并授权。工作流会披露 preflight 为 `used`、`skipped` 或 `fallback`。
+
 ### optimize-prompt
 
 将粗略要求、任务说明或已有 prompt 改写为清晰、自包含、可直接使用的 prompt。
