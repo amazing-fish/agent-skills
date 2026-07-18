@@ -6,6 +6,35 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class SkillPolicyTests(unittest.TestCase):
+    def test_optimize_prompt_preserves_grounding_and_outcome_boundaries(self):
+        skill = (
+            ROOT / "skills" / "optimize-prompt" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        for required_policy in (
+            "source-only mode",
+            "context-grounded mode",
+            "never complete the downstream deliverable",
+            "require a separate follow-up before execution",
+            "Never continue from the optimized prompt into execution",
+        ):
+            with self.subTest(required_policy=required_policy):
+                self.assertIn(required_policy, skill)
+
+    def test_goal_prompt_preflight_preserves_optional_authorization_and_fallback_boundaries(self):
+        skill = (
+            ROOT / "skills" / "execute-github-issue-pr-workflow" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        for required_policy in (
+            "Only enable this preflight when",
+            "Skip this preflight for a simple, well-bounded Issue",
+            "Do not provide the main Agent's expected solution",
+            "remain read-only",
+            "does not establish facts or grant authorization",
+            "single-Agent fallback",
+        ):
+            with self.subTest(required_policy=required_policy):
+                self.assertIn(required_policy, skill)
+
     def test_github_diff_policy_is_links_only(self):
         skill = (
             ROOT / "skills" / "explain-diff-for-human-review" / "SKILL.md"

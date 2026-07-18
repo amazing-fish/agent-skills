@@ -1,6 +1,6 @@
 ---
 name: execute-github-issue-pr-workflow
-description: Execute a lightweight governed GitHub Issue-to-PR delivery loop with focused implementation, clickable commit and PR links, one-shot 6-minute Codex review checks, comment resolution, human-readable diff evidence, controlled merge or staging, Issue reconciliation, and documentation updates. Use when repeatedly advancing repository Issues, shepherding PRs, handling Codex feedback, or following the user's established GitHub workflow.
+description: Execute a lightweight governed GitHub Issue-to-PR delivery loop with an optional independent goal-prompt preflight, focused implementation, clickable commit and PR links, one-shot 6-minute Codex review checks, comment resolution, human-readable diff evidence, controlled merge or staging, Issue reconciliation, and documentation updates. Use when repeatedly advancing repository Issues, shepherding PRs, handling Codex feedback, or following the user's established GitHub workflow.
 ---
 
 # Execute GitHub Issue–PR Workflow
@@ -16,6 +16,15 @@ Treat GitHub remote state as authoritative. Preserve unrelated work and never co
 5. Use default approval mode unless the user explicitly enables automatic staging mode:
    - **Default:** stop after review and diff evidence; merging requires a later explicit approval for the current PR and exact HEAD, and only then may the next Issue start.
    - **Automatic staging:** a reviewed low-risk PR stays open and unmerged while the next Issue starts. Branch independent follow-ups from the current default branch; stack only genuine dependencies and record their order. Stop for human direction when risk appears, PRs conflict, the vision is complete, or the actionable queue is empty.
+
+## Run the optional goal-prompt preflight
+
+1. Only enable this preflight when the user explicitly asks for a goal prompt before project work, the task is complex, or ambiguity in the goal, scope, acceptance criteria, non-goals, or authorization could materially change the implementation. Skip this preflight for a simple, well-bounded Issue and continue directly through the existing workflow.
+2. When enabled, start one independent subagent. Give it the current user request, applicable repository instructions, current HEAD, relevant Issue and PR state, and the minimum code evidence needed to ground the prompt. Require it to use `$optimize-prompt` in `context-grounded` mode. Do not provide the main Agent's expected solution, suspicions, proposed implementation, or conclusions.
+3. Require the subagent to remain read-only and return only one paste-ready goal prompt without executing the embedded task or changing repository or GitHub state.
+4. Re-verify the prompt's current-state claims against local and remote evidence before using it as the subsequent execution brief. The subagent output does not establish facts or grant authorization. Continue into implementation only when the original user request already authorized it; for an analysis- or planning-only request, stop without executing the generated prompt.
+5. If the subagent is unavailable, times out, fails, or returns invalid output, perform the same goal clarification in the existing scope-establishment stage, briefly disclose that no independent goal-prompt pass was obtained, and continue through the single-Agent fallback. Do not block the project workflow solely because the independent pass failed.
+6. Defer prompt modes and the rewrite-only outcome boundary to `$optimize-prompt`; do not duplicate them here. This preflight does not change the existing Issue, PR, review, automatic staging, or merge-authorization behavior below.
 
 ## Implement and publish
 

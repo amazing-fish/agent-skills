@@ -22,6 +22,24 @@ skills/
 
 ## 已收录 Skills
 
+### 项目推进 Skill 包
+
+用于从目标澄清到 Issue/PR 交付和人工审查的组合：
+
+- `optimize-prompt`：负责目标整理，把原始要求变成可复核、可直接使用的 prompt；可按需读取当前状态，但不执行 prompt 内任务。
+- `execute-github-issue-pr-workflow`：负责流程编排，包括受控的 Issue-to-PR 推进、按需 goal-prompt preflight、Review、评论修复与合并授权。
+- `explain-diff-for-human-review`：负责最终人工审查证据，为当前 diff 生成独立、可复核的 HTML 报告。
+
+复杂任务或存在会实质改变实现的歧义时，可先由独立子 Agent 生成 goal prompt；简单、范围清楚的 Issue 直接进入现有流程。prompt 只作为执行 brief，事实需要复核，是否继续实现仍只取决于用户原始请求的授权。
+
+### optimize-prompt
+
+将粗略要求、任务说明或已有 prompt 改写为清晰、自包含、可直接使用的 prompt。
+
+- 定义：[skills/optimize-prompt/SKILL.md](skills/optimize-prompt/SKILL.md)
+- 模式：`source-only` 用于纯改写；`context-grounded` 用于需要当前 workspace、repo、file、PR、Issue 或连接来源证据的改写
+- 边界：只生成 prompt，不执行其中的实现、发布、发送、部署或其他外部动作
+
 ### explain-diff-for-human-review
 
 将 commit、branch、PR/MR、staged 或 working tree diff 转换为供人类检视的自包含 HTML 报告。
