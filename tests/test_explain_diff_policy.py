@@ -680,6 +680,31 @@ class GitSnapshotPolicyTests(unittest.TestCase):
             self.assertEqual(result.entries[0].material, "text")
             self.assertEqual(result.entries[0].coverage, "local-lines")
 
+    def test_mode_only_change_is_disclosed_as_metadata_only(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            _git(repository, "update-index", "--chmod=+x", "tracked.txt")
+
+            staged = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="staged",
+            )
+            worktree = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+
+            for result in (staged, worktree):
+                with self.subTest(target_kind=result.target_kind):
+                    self.assertEqual(result.changed_files, 1)
+                    self.assertEqual(result.changed_lines, 0)
+                    self.assertEqual(result.unavailable_patches, 1)
+                    self.assertFalse(result.local_evidence_complete)
+                    self.assertEqual(result.entries[0].material, "mode-change")
+                    self.assertEqual(result.entries[0].old_mode, "100644")
+                    self.assertEqual(result.entries[0].new_mode, "100755")
+                    self.assertEqual(result.entries[0].coverage, "metadata-only")
+
     def test_pure_rename_is_one_metadata_only_entry(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))

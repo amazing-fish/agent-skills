@@ -44,6 +44,8 @@ class SnapshotEntry:
     coverage: str
     omission_reason: str | None
     source_path: str | None = None
+    old_mode: str | None = None
+    new_mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,7 @@ class _CapturedMaterial:
     patch_bytes: int
     name_status: tuple[tuple[str, str, str | None], ...]
     numstat: tuple[tuple[str, int | None], ...]
+    tracked_modes: tuple[tuple[str, str, str], ...]
     tracked_material_hints: tuple[tuple[str, str | None], ...]
     untracked: tuple[_UntrackedMaterial, ...]
     included_ignored_paths: tuple[str, ...]
@@ -195,6 +198,36 @@ def _parse_numstat(payload: bytes) -> tuple[tuple[str, int | None], ...]:
         if added != b"-" and deleted != b"-":
             changed_lines = int(added) + int(deleted)
         rows.append((path, changed_lines))
+    return tuple(rows)
+
+
+def _parse_raw(
+    payload: bytes,
+) -> tuple[tuple[str, str, str | None, str, str], ...]:
+    tokens = [token for token in payload.split(b"\0") if token]
+    rows: list[tuple[str, str, str | None, str, str]] = []
+    index = 0
+    while index < len(tokens):
+        header = tokens[index].split()
+        index += 1
+        if len(header) != 5 or not header[0].startswith(b":"):
+            raise RuntimeError("unexpected git raw diff output")
+        old_mode = header[0][1:].decode("ascii", errors="replace")
+        new_mode = header[1].decode("ascii", errors="replace")
+        status = header[4].decode("ascii", errors="replace")
+        if status.startswith(("R", "C")):
+            if index + 1 >= len(tokens):
+                raise RuntimeError("unexpected git raw relationship output")
+            source_path = _decode_path(tokens[index])
+            path = _decode_path(tokens[index + 1])
+            index += 2
+        else:
+            if index >= len(tokens):
+                raise RuntimeError("unexpected git raw path output")
+            source_path = None
+            path = _decode_path(tokens[index])
+            index += 1
+        rows.append((status, path, source_path, old_mode, new_mode))
     return tuple(rows)
 
 
@@ -437,6 +470,28 @@ def _capture_material(
         )
     )
     numstat = tuple(row for row in all_numstat if row[0] in selected_paths)
+    all_raw = _parse_raw(
+        _git(
+            repository,
+            *_diff_arguments(
+                target_kind,
+                base_sha,
+                (),
+                "--raw",
+                "--no-abbrev",
+                "-z",
+            ),
+        )
+    )
+    tracked_modes = tuple(
+        (path, old_mode, new_mode)
+        for _, path, _, old_mode, new_mode in all_raw
+        if path in selected_paths
+    )
+    modes_by_path = {
+        path: (old_mode, new_mode)
+        for path, old_mode, new_mode in tracked_modes
+    }
     tracked_material_hints = tuple(
         (
             path,
@@ -446,6 +501,7 @@ def _capture_material(
                 base_sha,
                 status,
                 path,
+                *modes_by_path[path],
             ),
         )
         for status, path, _ in name_status
@@ -491,6 +547,7 @@ def _capture_material(
         patch_bytes=patch_bytes,
         name_status=name_status,
         numstat=numstat,
+        tracked_modes=tracked_modes,
         tracked_material_hints=tracked_material_hints,
         untracked=untracked,
         included_ignored_paths=tuple(sorted(included_ignored_paths)),
@@ -535,6 +592,10 @@ def _fingerprint(
     for path, changed_lines in material.numstat:
         add(path.encode("utf-8", errors="surrogateescape"))
         add(str(changed_lines).encode("ascii"))
+    for path, old_mode, new_mode in material.tracked_modes:
+        add(path.encode("utf-8", errors="surrogateescape"))
+        add(old_mode.encode("ascii"))
+        add(new_mode.encode("ascii"))
     for path, material_hint in material.tracked_material_hints:
         add(path.encode("utf-8", errors="surrogateescape"))
         add(str(material_hint).encode("ascii"))
@@ -667,6 +728,8 @@ def _tracked_material_hint(
     base_sha: str,
     status: str,
     path: str,
+    old_mode: str,
+    new_mode: str,
 ) -> str | None:
     if status.startswith("R"):
         return "rename"
@@ -678,6 +741,8 @@ def _tracked_material_hint(
         return "lfs-pointer"
     if _is_lockfile(path):
         return "lockfile"
+    if old_mode != new_mode and "000000" not in {old_mode, new_mode}:
+        return "mode-change"
     return None
 
 
@@ -756,6 +821,10 @@ def capture_git_snapshot(
     untracked_by_path = {item.path: item for item in second.untracked}
     tracked_paths = {path for _, path, _ in second.name_status}
     tracked_material_hints = dict(second.tracked_material_hints)
+    tracked_modes = {
+        path: (old_mode, new_mode)
+        for path, old_mode, new_mode in second.tracked_modes
+    }
 
     for status, path, source_path in second.name_status:
         replacement = untracked_by_path.get(path)
@@ -766,6 +835,7 @@ def capture_git_snapshot(
         )
         changed_lines = stats.get(path)
         material_hint = tracked_material_hints[path]
+        old_mode, new_mode = tracked_modes[path]
         if replacement is not None:
             material = "untracked-replacement"
             changed_lines = None
@@ -795,6 +865,8 @@ def capture_git_snapshot(
                 coverage=coverage,
                 omission_reason=omission_reason,
                 source_path=source_path,
+                old_mode=old_mode,
+                new_mode=new_mode,
             )
         )
 
