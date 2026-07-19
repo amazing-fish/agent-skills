@@ -754,6 +754,55 @@ class GitSnapshotPolicyTests(unittest.TestCase):
                         self.assertEqual(result.entries[0].material, "rename")
                         self.assertEqual(result.entries[0].coverage, "metadata-only")
 
+    def test_source_scoped_committed_rename_keeps_destination_gap(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            original = "".join(f"line {index}\n" for index in range(20))
+            tracked = repository / "tracked.txt"
+            tracked.write_text(original, encoding="utf-8")
+            _git(repository, "add", "tracked.txt")
+            _git(repository, "commit", "-m", "expand tracked file")
+            base_sha = _git(repository, "rev-parse", "HEAD").stdout.strip()
+            _git(repository, "mv", "tracked.txt", "renamed.txt")
+            _git(repository, "commit", "-m", "rename tracked file")
+            renamed = repository / "renamed.txt"
+            renamed.write_text(original + "local change\n", encoding="utf-8")
+            _git(repository, "add", "renamed.txt")
+
+            first_snapshots = {}
+            for target_kind in ("staged", "working-tree"):
+                with self.subTest(target_kind=target_kind):
+                    result = self.module.capture_git_snapshot(
+                        repository=repository,
+                        target_kind=target_kind,
+                        base=base_sha,
+                        scope_paths=("tracked.txt",),
+                    )
+                    self.assertEqual(result.changed_files, 1)
+                    self.assertTrue(result.entries[0].status.startswith("R"))
+                    self.assertEqual(result.entries[0].path, "renamed.txt")
+                    self.assertEqual(result.entries[0].source_path, "tracked.txt")
+                    self.assertTrue(result.entries[0].uncommitted)
+                    self.assertEqual(result.uncommitted_paths, ("renamed.txt",))
+                    self.assertEqual(result.permalink_gap_paths, ("renamed.txt",))
+                    self.assertEqual(result.permalink_gap_files, 1)
+                    first_snapshots[target_kind] = result
+
+            renamed.write_text(original + "other change\n", encoding="utf-8")
+            _git(repository, "add", "renamed.txt")
+            for target_kind in ("staged", "working-tree"):
+                with self.subTest(target_kind=target_kind, changed_content=True):
+                    result = self.module.capture_git_snapshot(
+                        repository=repository,
+                        target_kind=target_kind,
+                        base=base_sha,
+                        scope_paths=("tracked.txt",),
+                    )
+                    self.assertNotEqual(
+                        first_snapshots[target_kind].snapshot_id,
+                        result.snapshot_id,
+                    )
+
     def test_pure_copy_is_one_metadata_only_relationship(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))

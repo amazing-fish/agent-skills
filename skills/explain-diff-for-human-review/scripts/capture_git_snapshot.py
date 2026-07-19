@@ -286,6 +286,22 @@ def _include_missing_mode_statuses(
     )
 
 
+def _effective_relationship_scope(
+    scope_paths: tuple[str, ...],
+    name_status: tuple[tuple[str, str, str | None], ...],
+) -> tuple[str, ...]:
+    if not scope_paths:
+        return ()
+    effective = set(scope_paths)
+    for status, path, source_path in name_status:
+        if not status.startswith(("R", "C")):
+            continue
+        effective.add(path)
+        if source_path is not None:
+            effective.add(source_path)
+    return tuple(sorted(effective))
+
+
 def _stream_file_material(path: Path) -> tuple[str, int, int | None, bool]:
     digest = hashlib.sha256()
     decoder = codecs.getincrementaldecoder("utf-8")()
@@ -454,18 +470,6 @@ def _capture_material(
     included_ignored_paths: frozenset[str],
     scope_paths: tuple[str, ...],
 ) -> _CapturedMaterial:
-    patch_digest, patch_bytes = _stream_git_digest(
-        repository,
-        *_diff_arguments(
-            target_kind,
-            base_sha,
-            scope_paths,
-            "--binary",
-            "--full-index",
-            "--no-ext-diff",
-            "--no-textconv",
-        ),
-    )
     all_name_status = _parse_name_status(
         _git(
             repository,
@@ -494,6 +498,19 @@ def _capture_material(
             row[2] is not None
             and _matches_path_or_descendant(row[2], scope_paths)
         )
+    )
+    effective_scope_paths = _effective_relationship_scope(scope_paths, name_status)
+    patch_digest, patch_bytes = _stream_git_digest(
+        repository,
+        *_diff_arguments(
+            target_kind,
+            base_sha,
+            effective_scope_paths,
+            "--binary",
+            "--full-index",
+            "--no-ext-diff",
+            "--no-textconv",
+        ),
     )
     all_numstat = _parse_numstat(
         _git(
@@ -555,7 +572,7 @@ def _capture_material(
                     repository,
                     target_kind,
                     base_sha,
-                    scope_paths,
+                    effective_scope_paths,
                 ),
                 *_read_explicit_ignored(
                     repository,
@@ -587,11 +604,14 @@ def _capture_material(
     uncommitted: set[str] = set()
     for status, path, source_path in all_uncommitted_status:
         if (
-            scope_paths
-            and not _matches_path_or_descendant(path, scope_paths)
+            effective_scope_paths
+            and not _matches_path_or_descendant(path, effective_scope_paths)
             and (
                 source_path is None
-                or not _matches_path_or_descendant(source_path, scope_paths)
+                or not _matches_path_or_descendant(
+                    source_path,
+                    effective_scope_paths,
+                )
             )
         ):
             continue
