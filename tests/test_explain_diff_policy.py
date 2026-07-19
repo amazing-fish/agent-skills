@@ -442,6 +442,29 @@ class GitSnapshotPolicyTests(unittest.TestCase):
             self.assertEqual(result.generated_paths, ("generated.txt",))
             self.assertNotEqual(result.snapshot_id, unclassified.snapshot_id)
 
+    def test_generated_directory_classifies_descendants_as_metadata_only(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            vendor = repository / "vendor"
+            vendor.mkdir()
+            (vendor / "library.js").write_text(
+                "export const value = 1;\n",
+                encoding="utf-8",
+            )
+
+            result = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+                generated_paths=("vendor",),
+            )
+
+            self.assertEqual(result.changed_files, 1)
+            self.assertEqual(result.unavailable_patches, 1)
+            self.assertFalse(result.local_evidence_complete)
+            self.assertEqual(result.generated_paths, ("vendor/library.js",))
+            self.assertEqual(result.entries[0].material, "generated")
+            self.assertEqual(result.entries[0].coverage, "metadata-only")
+
     def test_clean_head_equals_base_is_a_complete_zero_change_snapshot(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))

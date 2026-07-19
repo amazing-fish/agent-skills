@@ -491,6 +491,14 @@ def _normalize_paths(paths: Iterable[str], *, label: str) -> frozenset[str]:
     return frozenset(normalized)
 
 
+def _matches_path_or_descendant(path: str, roots: Iterable[str]) -> bool:
+    normalized = str(PurePosixPath(path))
+    return any(
+        normalized == root or normalized.startswith(f"{root}/")
+        for root in roots
+    )
+
+
 def _is_text(content: bytes) -> bool:
     if b"\0" in content:
         return False
@@ -604,7 +612,7 @@ def capture_git_snapshot(
         outside_scope = [
             path
             for path in included_ignored
-            if not any(path == item or path.startswith(f"{item}/") for item in scope)
+            if not _matches_path_or_descendant(path, scope)
         ]
         if outside_scope:
             raise ValueError(
@@ -633,7 +641,11 @@ def capture_git_snapshot(
 
     target_paths = {path for _, path, _ in second.name_status}
     target_paths.update(item.path for item in second.untracked)
-    generated = frozenset(generated.intersection(target_paths))
+    generated = frozenset(
+        path
+        for path in target_paths
+        if _matches_path_or_descendant(path, generated)
+    )
     stats = dict(second.numstat)
     uncommitted = frozenset(second.uncommitted_paths)
     entries: list[SnapshotEntry] = []
