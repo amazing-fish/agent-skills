@@ -785,20 +785,50 @@ class GitSnapshotPolicyTests(unittest.TestCase):
             _git(repository, "add", "copied.txt")
 
             for target_kind in ("staged", "working-tree"):
+                for scope in ("copied.txt", "tracked.txt"):
+                    with self.subTest(target_kind=target_kind, scope=scope):
+                        result = self.module.capture_git_snapshot(
+                            repository=repository,
+                            target_kind=target_kind,
+                            scope_paths=(scope,),
+                        )
+                        self.assertEqual(result.changed_files, 1)
+                        self.assertEqual(result.changed_lines, 0)
+                        self.assertEqual(result.unavailable_patches, 1)
+                        self.assertTrue(result.entries[0].status.startswith("C"))
+                        self.assertEqual(result.entries[0].path, "copied.txt")
+                        self.assertEqual(result.entries[0].source_path, "tracked.txt")
+                        self.assertEqual(result.entries[0].material, "copy")
+                        self.assertEqual(result.entries[0].coverage, "metadata-only")
+                        self.assertTrue(result.entries[0].uncommitted)
+                        self.assertEqual(result.uncommitted_paths, ("copied.txt",))
+                        self.assertEqual(result.permalink_gap_paths, ("copied.txt",))
+                        self.assertEqual(result.permalink_gap_files, 1)
+
+    def test_committed_copy_scoped_to_source_has_no_permalink_gap(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            base_sha = _git(repository, "rev-parse", "HEAD").stdout.strip()
+            (repository / "copied.txt").write_text("before\n", encoding="utf-8")
+            _git(repository, "add", "copied.txt")
+            _git(repository, "commit", "-m", "copy tracked file")
+
+            for target_kind in ("staged", "working-tree"):
                 with self.subTest(target_kind=target_kind):
                     result = self.module.capture_git_snapshot(
                         repository=repository,
                         target_kind=target_kind,
-                        scope_paths=("copied.txt",),
+                        base=base_sha,
+                        scope_paths=("tracked.txt",),
                     )
                     self.assertEqual(result.changed_files, 1)
-                    self.assertEqual(result.changed_lines, 0)
-                    self.assertEqual(result.unavailable_patches, 1)
                     self.assertTrue(result.entries[0].status.startswith("C"))
                     self.assertEqual(result.entries[0].path, "copied.txt")
                     self.assertEqual(result.entries[0].source_path, "tracked.txt")
-                    self.assertEqual(result.entries[0].material, "copy")
-                    self.assertEqual(result.entries[0].coverage, "metadata-only")
+                    self.assertFalse(result.entries[0].uncommitted)
+                    self.assertEqual(result.uncommitted_paths, ())
+                    self.assertEqual(result.permalink_gap_paths, ())
+                    self.assertEqual(result.permalink_gap_files, 0)
 
     def test_lfs_pointer_is_metadata_only_without_reading_lfs_object(self):
         with tempfile.TemporaryDirectory() as temp:

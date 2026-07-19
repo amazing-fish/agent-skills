@@ -248,18 +248,6 @@ def _diff_arguments(
     return args
 
 
-def _uncommitted_arguments(
-    target_kind: str,
-    head_sha: str,
-    scope_paths: tuple[str, ...],
-) -> list[str]:
-    args = ["diff", "--name-only", "-z", "--find-renames", "--find-copies-harder"]
-    if target_kind == "staged":
-        args.append("--cached")
-    args.extend([head_sha, "--", *_literal_pathspecs(scope_paths)])
-    return args
-
-
 def _stream_file_material(path: Path) -> tuple[str, int, int | None, bool]:
     digest = hashlib.sha256()
     decoder = codecs.getincrementaldecoder("utf-8")()
@@ -526,22 +514,33 @@ def _capture_material(
             key=lambda item: item.path,
         ))
 
-    uncommitted = {
-        _decode_path(path)
-        for path in _git(
+    all_uncommitted_status = _parse_name_status(
+        _git(
             repository,
-            *_uncommitted_arguments(target_kind, head_sha, scope_paths),
-        ).split(b"\0")
-        if path
-    }
-    uncommitted.update(item.path for item in untracked)
-    for status, path, source_path in name_status:
+            *_diff_arguments(
+                target_kind,
+                head_sha,
+                (),
+                "--name-status",
+                "-z",
+            ),
+        )
+    )
+    uncommitted: set[str] = set()
+    for status, path, source_path in all_uncommitted_status:
         if (
-            status.startswith("R")
-            and source_path is not None
-            and (path in uncommitted or source_path in uncommitted)
+            scope_paths
+            and not _matches_path_or_descendant(path, scope_paths)
+            and (
+                source_path is None
+                or not _matches_path_or_descendant(source_path, scope_paths)
+            )
         ):
-            uncommitted.update((path, source_path))
+            continue
+        uncommitted.add(path)
+        if status.startswith("R") and source_path is not None:
+            uncommitted.add(source_path)
+    uncommitted.update(item.path for item in untracked)
     return _CapturedMaterial(
         patch_digest=patch_digest,
         patch_bytes=patch_bytes,
