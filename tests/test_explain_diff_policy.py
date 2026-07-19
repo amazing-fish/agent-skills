@@ -644,6 +644,42 @@ class GitSnapshotPolicyTests(unittest.TestCase):
                     self.assertIsNone(result.entries[0].changed_lines)
                     self.assertEqual(result.entries[0].coverage, "metadata-only")
 
+    def test_gitlink_probe_treats_changed_path_as_literal(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            child_root = root / "child-root"
+            parent_root = root / "parent-root"
+            child_root.mkdir()
+            parent_root.mkdir()
+            child = _create_repository(child_root)
+            parent = _create_repository(parent_root)
+            _git(
+                parent,
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                str(child),
+                "fooa",
+            )
+            literal = parent / "foo[a]"
+            literal.write_text("before\n", encoding="utf-8")
+            _git(parent, "add", "foo[a]")
+            _git(parent, "commit", "-am", "add literal file and submodule")
+            literal.write_text("after\n", encoding="utf-8")
+
+            result = self.module.capture_git_snapshot(
+                repository=parent,
+                target_kind="working-tree",
+            )
+
+            self.assertEqual(result.changed_files, 1)
+            self.assertEqual(result.changed_lines, 2)
+            self.assertEqual(result.unavailable_patches, 0)
+            self.assertEqual(result.entries[0].path, "foo[a]")
+            self.assertEqual(result.entries[0].material, "text")
+            self.assertEqual(result.entries[0].coverage, "local-lines")
+
     def test_pure_rename_is_one_metadata_only_entry(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))

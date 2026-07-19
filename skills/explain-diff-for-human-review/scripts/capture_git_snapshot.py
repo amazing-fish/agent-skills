@@ -562,8 +562,16 @@ def _tracked_content_size(
 
 
 def _is_gitlink(repository: Path, base_sha: str, path: str) -> bool:
-    current = _git(repository, "ls-files", "--stage", "-z", "--", path)
-    base = _git(repository, "ls-tree", "-z", base_sha, "--", path)
+    literal_path = _literal_pathspecs((path,))
+    current = _git(
+        repository,
+        "ls-files",
+        "--stage",
+        "-z",
+        "--",
+        *literal_path,
+    )
+    base = _git(repository, "ls-tree", "-z", base_sha, "--", *literal_path)
     return any(
         record.startswith(b"160000 ")
         for payload in (current, base)
