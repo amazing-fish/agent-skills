@@ -633,10 +633,15 @@ class GitSnapshotPolicyTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            worktree = self.module.capture_git_snapshot(
-                repository=repository,
-                target_kind="working-tree",
-            )
+            with mock.patch.object(
+                Path,
+                "read_bytes",
+                side_effect=AssertionError("LFS object content must not be read directly"),
+            ):
+                worktree = self.module.capture_git_snapshot(
+                    repository=repository,
+                    target_kind="working-tree",
+                )
             _git(repository, "add", "asset.dat")
             staged = self.module.capture_git_snapshot(
                 repository=repository,

@@ -31,7 +31,7 @@ class SnapshotEntry:
     status: str
     material: str
     changed_lines: int | None
-    content_bytes: int
+    content_bytes: int | None
     uncommitted: bool
     coverage: str
     omission_reason: str | None
@@ -322,15 +322,20 @@ def _line_count(content: bytes) -> int:
     return content.count(b"\n") + (0 if content.endswith(b"\n") else 1)
 
 
-def _tracked_content(repository: Path, target_kind: str, path: str) -> bytes:
+def _tracked_content_size(
+    repository: Path,
+    target_kind: str,
+    path: str,
+) -> int | None:
     if target_kind == "staged":
-        return _git(repository, "show", f":{path}", check=False)
+        payload = _git(repository, "cat-file", "-s", f":{path}", check=False).strip()
+        return int(payload) if payload.isdigit() else None
     absolute = repository / Path(path)
     if absolute.is_symlink():
-        return os.readlink(absolute).encode("utf-8", errors="surrogateescape")
+        return len(os.readlink(absolute).encode("utf-8", errors="surrogateescape"))
     if absolute.is_file():
-        return absolute.read_bytes()
-    return b""
+        return absolute.stat().st_size
+    return None
 
 
 def _is_gitlink(repository: Path, base_sha: str, path: str) -> bool:
@@ -432,7 +437,7 @@ def capture_git_snapshot(
     unavailable_patches = 0
 
     for status, path, source_path in second.name_status:
-        content = _tracked_content(root, normalized_target, path)
+        content_bytes = _tracked_content_size(root, normalized_target, path)
         changed_lines = stats.get(path)
         if status.startswith(("R", "C")):
             material = "rename"
@@ -461,7 +466,7 @@ def capture_git_snapshot(
                 status=status,
                 material=material,
                 changed_lines=changed_lines,
-                content_bytes=len(content),
+                content_bytes=content_bytes,
                 uncommitted=path in uncommitted,
                 coverage=coverage,
                 omission_reason=omission_reason,
