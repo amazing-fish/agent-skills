@@ -683,6 +683,7 @@ class GitSnapshotPolicyTests(unittest.TestCase):
     def test_mode_only_change_is_disclosed_as_metadata_only(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))
+            _git(repository, "config", "core.filemode", "true")
             _git(repository, "update-index", "--chmod=+x", "tracked.txt")
 
             staged = self.module.capture_git_snapshot(

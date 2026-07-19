@@ -248,6 +248,44 @@ def _diff_arguments(
     return args
 
 
+def _staged_mode_changes(
+    repository: Path,
+    base_sha: str,
+) -> tuple[tuple[str, str, str | None, str, str], ...]:
+    return tuple(
+        row
+        for row in _parse_raw(
+            _git(
+                repository,
+                *_diff_arguments(
+                    "staged",
+                    base_sha,
+                    (),
+                    "--raw",
+                    "--no-abbrev",
+                    "-z",
+                ),
+            )
+        )
+        if row[3] != row[4] and "000000" not in {row[3], row[4]}
+    )
+
+
+def _include_missing_mode_statuses(
+    name_status: tuple[tuple[str, str, str | None], ...],
+    mode_changes: tuple[tuple[str, str, str | None, str, str], ...],
+) -> tuple[tuple[str, str, str | None], ...]:
+    known_paths = {path for _, path, _ in name_status}
+    return (
+        *name_status,
+        *(
+            (status, path, source_path)
+            for status, path, source_path, _, _ in mode_changes
+            if path not in known_paths
+        ),
+    )
+
+
 def _stream_file_material(path: Path) -> tuple[str, int, int | None, bool]:
     digest = hashlib.sha256()
     decoder = codecs.getincrementaldecoder("utf-8")()
@@ -440,6 +478,13 @@ def _capture_material(
             ),
         )
     )
+    staged_mode_changes = ()
+    if target_kind == "working-tree":
+        staged_mode_changes = _staged_mode_changes(repository, base_sha)
+        all_name_status = _include_missing_mode_statuses(
+            all_name_status,
+            staged_mode_changes,
+        )
     name_status = tuple(
         row
         for row in all_name_status
@@ -450,14 +495,19 @@ def _capture_material(
             and _matches_path_or_descendant(row[2], scope_paths)
         )
     )
-    selected_paths = {path for _, path, _ in name_status}
     all_numstat = _parse_numstat(
         _git(
             repository,
             *_diff_arguments(target_kind, base_sha, (), "--numstat", "-z"),
         )
     )
-    numstat = tuple(row for row in all_numstat if row[0] in selected_paths)
+    numstat_by_path = dict(all_numstat)
+    staged_mode_paths = {path for _, path, _, _, _ in staged_mode_changes}
+    numstat = tuple(
+        (path, numstat_by_path.get(path, 0))
+        for _, path, _ in name_status
+        if path in numstat_by_path or path in staged_mode_paths
+    )
     all_raw = _parse_raw(
         _git(
             repository,
@@ -471,15 +521,18 @@ def _capture_material(
             ),
         )
     )
-    tracked_modes = tuple(
-        (path, old_mode, new_mode)
-        for _, path, _, old_mode, new_mode in all_raw
-        if path in selected_paths
-    )
     modes_by_path = {
         path: (old_mode, new_mode)
-        for path, old_mode, new_mode in tracked_modes
+        for _, path, _, old_mode, new_mode in all_raw
     }
+    modes_by_path.update(
+        (path, (old_mode, new_mode))
+        for _, path, _, old_mode, new_mode in staged_mode_changes
+    )
+    tracked_modes = tuple(
+        (path, *modes_by_path[path])
+        for _, path, _ in name_status
+    )
     tracked_material_hints = tuple(
         (
             path,
@@ -526,6 +579,11 @@ def _capture_material(
             ),
         )
     )
+    if target_kind == "working-tree":
+        all_uncommitted_status = _include_missing_mode_statuses(
+            all_uncommitted_status,
+            _staged_mode_changes(repository, head_sha),
+        )
     uncommitted: set[str] = set()
     for status, path, source_path in all_uncommitted_status:
         if (
