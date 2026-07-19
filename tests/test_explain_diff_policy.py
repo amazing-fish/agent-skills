@@ -706,6 +706,28 @@ class GitSnapshotPolicyTests(unittest.TestCase):
                     self.assertEqual(result.entries[0].source_path, "tracked.txt")
                     self.assertEqual(result.entries[0].material, "rename")
 
+    def test_scoped_rename_preserves_cross_scope_relationship(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            _git(repository, "mv", "tracked.txt", "renamed.txt")
+
+            for target_kind in ("staged", "working-tree"):
+                for scope in ("renamed.txt", "tracked.txt"):
+                    with self.subTest(target_kind=target_kind, scope=scope):
+                        result = self.module.capture_git_snapshot(
+                            repository=repository,
+                            target_kind=target_kind,
+                            scope_paths=(scope,),
+                        )
+                        self.assertEqual(result.changed_files, 1)
+                        self.assertEqual(result.changed_lines, 0)
+                        self.assertEqual(result.unavailable_patches, 1)
+                        self.assertTrue(result.entries[0].status.startswith("R"))
+                        self.assertEqual(result.entries[0].path, "renamed.txt")
+                        self.assertEqual(result.entries[0].source_path, "tracked.txt")
+                        self.assertEqual(result.entries[0].material, "rename")
+                        self.assertEqual(result.entries[0].coverage, "metadata-only")
+
     def test_pure_copy_is_one_metadata_only_relationship(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))
@@ -730,6 +752,28 @@ class GitSnapshotPolicyTests(unittest.TestCase):
                     self.assertEqual(result.entries[0].source_path, "tracked.txt")
                     self.assertEqual(result.entries[0].path, "copied.txt")
                     self.assertEqual(result.entries[0].material, "copy")
+
+    def test_scoped_copy_preserves_source_relationship(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            (repository / "copied.txt").write_text("before\n", encoding="utf-8")
+            _git(repository, "add", "copied.txt")
+
+            for target_kind in ("staged", "working-tree"):
+                with self.subTest(target_kind=target_kind):
+                    result = self.module.capture_git_snapshot(
+                        repository=repository,
+                        target_kind=target_kind,
+                        scope_paths=("copied.txt",),
+                    )
+                    self.assertEqual(result.changed_files, 1)
+                    self.assertEqual(result.changed_lines, 0)
+                    self.assertEqual(result.unavailable_patches, 1)
+                    self.assertTrue(result.entries[0].status.startswith("C"))
+                    self.assertEqual(result.entries[0].path, "copied.txt")
+                    self.assertEqual(result.entries[0].source_path, "tracked.txt")
+                    self.assertEqual(result.entries[0].material, "copy")
+                    self.assertEqual(result.entries[0].coverage, "metadata-only")
 
     def test_lfs_pointer_is_metadata_only_without_reading_lfs_object(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -812,6 +856,38 @@ class GitSnapshotPolicyTests(unittest.TestCase):
                                 repository=repository,
                                 target_kind="working-tree",
                             )
+
+    def test_scoped_snapshot_identity_binds_tracked_lfs_classification(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            asset = repository / "asset.dat"
+            asset.write_text("before\n", encoding="utf-8")
+            _git(repository, "add", "asset.dat")
+            _git(repository, "commit", "-m", "add ordinary asset")
+            asset.write_text("after\n", encoding="utf-8")
+            _git(repository, "add", "asset.dat")
+
+            ordinary = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="staged",
+                scope_paths=("asset.dat",),
+            )
+            (repository / ".gitattributes").write_text(
+                "*.dat filter=lfs\n",
+                encoding="utf-8",
+            )
+            _git(repository, "add", ".gitattributes")
+            lfs_classified = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="staged",
+                scope_paths=("asset.dat",),
+            )
+
+            self.assertEqual(ordinary.entries[0].material, "text")
+            self.assertTrue(ordinary.local_evidence_complete)
+            self.assertEqual(lfs_classified.entries[0].material, "lfs-pointer")
+            self.assertFalse(lfs_classified.local_evidence_complete)
+            self.assertNotEqual(ordinary.snapshot_id, lfs_classified.snapshot_id)
 
     def test_untracked_lfs_object_is_metadata_only_without_content_read(self):
         with tempfile.TemporaryDirectory() as temp:

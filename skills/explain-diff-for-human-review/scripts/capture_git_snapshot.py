@@ -85,6 +85,7 @@ class _CapturedMaterial:
     patch_bytes: int
     name_status: tuple[tuple[str, str, str | None], ...]
     numstat: tuple[tuple[str, int | None], ...]
+    tracked_material_hints: tuple[tuple[str, str | None], ...]
     untracked: tuple[_UntrackedMaterial, ...]
     included_ignored_paths: tuple[str, ...]
     uncommitted_paths: tuple[str, ...]
@@ -406,23 +407,48 @@ def _capture_material(
             "--no-textconv",
         ),
     )
-    name_status = _parse_name_status(
+    all_name_status = _parse_name_status(
         _git(
             repository,
             *_diff_arguments(
                 target_kind,
                 base_sha,
-                scope_paths,
+                (),
                 "--name-status",
                 "-z",
             ),
         )
     )
-    numstat = _parse_numstat(
+    name_status = tuple(
+        row
+        for row in all_name_status
+        if not scope_paths
+        or _matches_path_or_descendant(row[1], scope_paths)
+        or (
+            row[2] is not None
+            and _matches_path_or_descendant(row[2], scope_paths)
+        )
+    )
+    selected_paths = {path for _, path, _ in name_status}
+    all_numstat = _parse_numstat(
         _git(
             repository,
-            *_diff_arguments(target_kind, base_sha, scope_paths, "--numstat", "-z"),
+            *_diff_arguments(target_kind, base_sha, (), "--numstat", "-z"),
         )
+    )
+    numstat = tuple(row for row in all_numstat if row[0] in selected_paths)
+    tracked_material_hints = tuple(
+        (
+            path,
+            _tracked_material_hint(
+                repository,
+                target_kind,
+                base_sha,
+                status,
+                path,
+            ),
+        )
+        for status, path, _ in name_status
     )
     untracked = ()
     if target_kind == "working-tree":
@@ -453,11 +479,19 @@ def _capture_material(
         if path
     }
     uncommitted.update(item.path for item in untracked)
+    for status, path, source_path in name_status:
+        if (
+            status.startswith("R")
+            and source_path is not None
+            and (path in uncommitted or source_path in uncommitted)
+        ):
+            uncommitted.update((path, source_path))
     return _CapturedMaterial(
         patch_digest=patch_digest,
         patch_bytes=patch_bytes,
         name_status=name_status,
         numstat=numstat,
+        tracked_material_hints=tracked_material_hints,
         untracked=untracked,
         included_ignored_paths=tuple(sorted(included_ignored_paths)),
         uncommitted_paths=tuple(sorted(uncommitted)),
@@ -494,6 +528,16 @@ def _fingerprint(
         add(str(item.content_bytes).encode("ascii"))
         add(str(item.changed_lines).encode("ascii"))
         add(str(item.material_hint).encode("ascii"))
+    for status, path, source_path in material.name_status:
+        add(status.encode("ascii"))
+        add(path.encode("utf-8", errors="surrogateescape"))
+        add(str(source_path).encode("utf-8", errors="surrogateescape"))
+    for path, changed_lines in material.numstat:
+        add(path.encode("utf-8", errors="surrogateescape"))
+        add(str(changed_lines).encode("ascii"))
+    for path, material_hint in material.tracked_material_hints:
+        add(path.encode("utf-8", errors="surrogateescape"))
+        add(str(material_hint).encode("ascii"))
     for path in scope_paths:
         add(b"scope")
         add(path.encode("utf-8", errors="surrogateescape"))
@@ -617,6 +661,26 @@ def _is_lockfile(path: str) -> bool:
     return name in LOCKFILE_NAMES or name.endswith((".lock", ".lock.json"))
 
 
+def _tracked_material_hint(
+    repository: Path,
+    target_kind: str,
+    base_sha: str,
+    status: str,
+    path: str,
+) -> str | None:
+    if status.startswith("R"):
+        return "rename"
+    if status.startswith("C"):
+        return "copy"
+    if _is_gitlink(repository, base_sha, path):
+        return "submodule"
+    if _uses_lfs_filter(repository, target_kind, base_sha, path):
+        return "lfs-pointer"
+    if _is_lockfile(path):
+        return "lockfile"
+    return None
+
+
 def capture_git_snapshot(
     *,
     repository: str | Path,
@@ -691,6 +755,7 @@ def capture_git_snapshot(
     unavailable_patches = 0
     untracked_by_path = {item.path: item for item in second.untracked}
     tracked_paths = {path for _, path, _ in second.name_status}
+    tracked_material_hints = dict(second.tracked_material_hints)
 
     for status, path, source_path in second.name_status:
         replacement = untracked_by_path.get(path)
@@ -700,22 +765,14 @@ def capture_git_snapshot(
             else _tracked_content_size(root, normalized_target, path)
         )
         changed_lines = stats.get(path)
+        material_hint = tracked_material_hints[path]
         if replacement is not None:
             material = "untracked-replacement"
             changed_lines = None
-        elif status.startswith("R"):
-            material = "rename"
-            changed_lines = None
-        elif status.startswith("C"):
-            material = "copy"
-            changed_lines = None
-        elif _is_gitlink(root, base_sha, path):
-            material = "submodule"
-            changed_lines = None
-        elif _uses_lfs_filter(root, normalized_target, base_sha, path):
-            material = "lfs-pointer"
-        elif _is_lockfile(path):
-            material = "lockfile"
+        elif material_hint is not None:
+            material = material_hint
+            if material in {"rename", "copy", "submodule"}:
+                changed_lines = None
         elif path in generated:
             material = "generated"
         else:
