@@ -47,12 +47,13 @@ skills/
 将 commit、branch、PR/MR、staged 或 working tree diff 转换为供人类检视的自包含 HTML 报告。
 
 - 可选独立子 Agent 只读风险审查；能力不可用或失败时回退到单 Agent，并在报告中披露覆盖和证据缺口
+- 生成的单文件 HTML 通过语义颜色 token 跟随系统浅色/深色偏好，并保持独立的节墨打印样式
 
 - 定义：[skills/explain-diff-for-human-review/SKILL.md](skills/explain-diff-for-human-review/SKILL.md)
 - 来源：[GitHubxsy/agent-skills](https://github.com/GitHubxsy/agent-skills/tree/main/skills/explain-diff-for-human-review)
 - 上游版本：`110c9dd9e30d278edbfc30fc6bac05cdf4e4afd3`
 - 上游许可证：Apache-2.0
-- 本地修订：[#2](../../issues/2) 报告输出路径；[#3](../../issues/3) 大规模 diff；[#7](../../issues/7) GitHub 固定链接证据策略；[#10](../../issues/10) 可选独立子 Agent 审查
+- 本地修订：[#2](../../issues/2) 报告输出路径；[#3](../../issues/3) 大规模 diff；[#7](../../issues/7) GitHub 固定链接证据策略；[#10](../../issues/10) 可选独立子 Agent 审查；[#15](../../issues/15) 明暗主题视觉基线
 
 
 ### execute-github-issue-pr-workflow
