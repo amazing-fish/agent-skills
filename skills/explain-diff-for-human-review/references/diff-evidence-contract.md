@@ -27,14 +27,17 @@ Count each repository-relative target path once. `staged` includes the index rel
 | Committed or mutable tracked text | Count | Git numstat | Count captured diff bytes | Line-reviewable locally; GitHub permalinks cover it only when it exists at `head_sha`. |
 | Staged text | Count in `staged` and `working-tree` | Git numstat | Count | Add path to `permalink_gap_paths`; GitHub evidence is incomplete until committed. |
 | Untracked text | Count only in `working-tree` | Physical UTF-8 lines | Count raw bytes | Local lines may inform analysis, but the HTML omits source and discloses the permalink gap. |
+| Rename/copy | Count the relationship once at its destination path | Unknown for line coverage | Count captured diff bytes | Preserve the source path and Git status, classify as metadata-only, and increment unavailable patches. Do not disable rename detection or expand a pure rename into delete/add line counts. |
 | Binary | Count | Unknown | Count captured bytes | Metadata-only; increment unavailable patches, list the path and reason, and set local line evidence incomplete. |
 | Generated/vendor | Count when in target | Count only when deterministic textual stats exist | Count | Metadata-only even when line counts exist; increment unavailable patches and disclose the classification source. Pass known paths with `--generated-path`. |
 | Submodule gitlink | Count | Unknown | Count captured diff bytes | Detect Git mode `160000`; treat the commit-pointer change as metadata-only and increment unavailable patches. Never interpret numeric numstat as reviewed source lines. |
+| Git LFS | Count | Count pointer-line stats when known, never object lines | Count captured pointer/diff bytes | Detect the `filter=lfs` attribute in the target or base, classify as metadata-only, and increment unavailable patches without fetching or publishing the LFS object. |
+| Lockfile | Count | Count deterministic textual stats when known | Count | Recognize standard lockfile names and `.lock`/`.lock.json` suffixes, classify as metadata-only, and increment unavailable patches. |
 | Ignored | Exclude by default | Exclude | Exclude | State the default exclusion. If the user explicitly scopes an untracked ignored file, pass `--include-ignored-path`, then count it by the untracked rules and mark status `!`. Reject tracked paths so one path cannot enter the inventory twice; never enumerate ignored paths speculatively. |
 | Missing patch or material | Count when the target inventory proves the path | Count only known stats | Count only received bytes | Increment unavailable patches, identify the path as missing, and set evidence incomplete. Do not silently fall back to another version. |
 | Truncated patch or material | Count | Count only verified complete stats | Count only received bytes | Increment unavailable patches, record the truncation boundary and omitted remainder, and set evidence incomplete. |
 
-Binary, generated/vendor, submodule, missing, and truncated paths appear in the metadata-only or omission disclosure even when their byte size is known. `local_evidence_complete` describes line-level local coverage only. Final report `evidence_complete` additionally incorporates hosting coverage: a non-clean GitHub mutable target is incomplete because immutable links do not cover its local paths.
+Rename/copy, binary, generated/vendor, submodule, Git LFS, lockfile, missing, and truncated paths appear in the metadata-only or omission disclosure even when their byte size is known. `local_evidence_complete` describes line-level local coverage only. Final report `evidence_complete` additionally incorporates hosting coverage: a non-clean GitHub mutable target is incomplete because immutable links do not cover its local paths.
 
 ## Snapshot helper
 
@@ -48,4 +51,4 @@ python scripts/capture_git_snapshot.py \
   --generated-path path/to/generated.js
 ```
 
-The helper captures twice and fails if the material changes between reads. Its JSON is metadata-only and safe to store beside the report, subject to the repository paths already being in review scope. Re-run it immediately before finalizing the report; if the identity changes, discard conclusions bound to the earlier snapshot.
+The helper captures repeatedly and fails if the material changes between reads. It also re-resolves `HEAD^{commit}` after the final capture and fails on HEAD-only drift. Its JSON is metadata-only and safe to store beside the report, subject to the repository paths already being in review scope. Re-run it immediately before finalizing the report; if the identity changes, discard conclusions bound to the earlier snapshot.

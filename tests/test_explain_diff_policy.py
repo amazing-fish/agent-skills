@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -367,6 +368,32 @@ class GitSnapshotPolicyTests(unittest.TestCase):
             self.assertEqual(first.permalink_gap_files, 1)
             self.assertEqual(first.unavailable_patches, 0)
 
+    def test_head_drift_after_final_capture_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            _git(repository, "commit", "--allow-empty", "-m", "movable head")
+            original_capture = self.module._capture_material
+            capture_count = 0
+
+            def capture_then_move_head(*args, **kwargs):
+                nonlocal capture_count
+                material = original_capture(*args, **kwargs)
+                capture_count += 1
+                if capture_count == 3:
+                    _git(repository, "reset", "--soft", "HEAD^")
+                return material
+
+            with mock.patch.object(
+                self.module,
+                "_capture_material",
+                side_effect=capture_then_move_head,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "HEAD changed"):
+                    self.module.capture_git_snapshot(
+                        repository=repository,
+                        target_kind="working-tree",
+                    )
+
     def test_untracked_text_counts_lines_and_bytes_without_source_output(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))
@@ -556,6 +583,94 @@ class GitSnapshotPolicyTests(unittest.TestCase):
                     self.assertEqual(result.entries[0].material, "submodule")
                     self.assertIsNone(result.entries[0].changed_lines)
                     self.assertEqual(result.entries[0].coverage, "metadata-only")
+
+    def test_pure_rename_is_one_metadata_only_entry(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            _git(repository, "mv", "tracked.txt", "renamed.txt")
+
+            worktree = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+            staged = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="staged",
+            )
+
+            for result in (worktree, staged):
+                with self.subTest(target_kind=result.target_kind):
+                    self.assertEqual(result.changed_files, 1)
+                    self.assertEqual(result.changed_lines, 0)
+                    self.assertEqual(result.unavailable_patches, 1)
+                    self.assertEqual(result.metadata_only_paths, ("renamed.txt",))
+                    self.assertFalse(result.local_evidence_complete)
+                    self.assertTrue(result.entries[0].status.startswith("R"))
+                    self.assertEqual(result.entries[0].path, "renamed.txt")
+                    self.assertEqual(result.entries[0].source_path, "tracked.txt")
+                    self.assertEqual(result.entries[0].material, "rename")
+
+    def test_lfs_pointer_is_metadata_only_without_reading_lfs_object(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            (repository / ".gitattributes").write_text(
+                "*.dat filter=lfs\n",
+                encoding="utf-8",
+            )
+            asset = repository / "asset.dat"
+            asset.write_text(
+                "version https://git-lfs.github.com/spec/v1\n"
+                f"oid sha256:{'a' * 64}\n"
+                "size 1\n",
+                encoding="utf-8",
+            )
+            _git(repository, "add", ".gitattributes", "asset.dat")
+            _git(repository, "commit", "-m", "add lfs pointer")
+            asset.write_text(
+                "version https://git-lfs.github.com/spec/v1\n"
+                f"oid sha256:{'b' * 64}\n"
+                "size 2\n",
+                encoding="utf-8",
+            )
+
+            worktree = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+            _git(repository, "add", "asset.dat")
+            staged = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="staged",
+            )
+
+            for result in (worktree, staged):
+                with self.subTest(target_kind=result.target_kind):
+                    self.assertEqual(result.changed_files, 1)
+                    self.assertEqual(result.changed_lines, 4)
+                    self.assertEqual(result.unavailable_patches, 1)
+                    self.assertFalse(result.local_evidence_complete)
+                    self.assertEqual(result.entries[0].material, "lfs-pointer")
+                    self.assertEqual(result.entries[0].coverage, "metadata-only")
+
+    def test_lockfile_is_metadata_only(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            lockfile = repository / "package-lock.json"
+            lockfile.write_text('{"lockfileVersion": 1}\n', encoding="utf-8")
+            _git(repository, "add", "package-lock.json")
+            _git(repository, "commit", "-m", "add lockfile")
+            lockfile.write_text('{"lockfileVersion": 2}\n', encoding="utf-8")
+
+            result = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+
+            self.assertEqual(result.changed_files, 1)
+            self.assertEqual(result.changed_lines, 2)
+            self.assertEqual(result.unavailable_patches, 1)
+            self.assertEqual(result.entries[0].material, "lockfile")
+            self.assertEqual(result.entries[0].coverage, "metadata-only")
 
     def test_ignored_material_is_excluded_unless_explicitly_scoped(self):
         with tempfile.TemporaryDirectory() as temp:

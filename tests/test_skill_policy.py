@@ -196,9 +196,12 @@ class SkillPolicyTests(unittest.TestCase):
                 self.assertIn(required_policy, skill)
         for material in (
             "Untracked text",
+            "Rename/copy",
             "Binary",
             "Generated/vendor",
             "Submodule gitlink",
+            "Git LFS",
+            "Lockfile",
             "Ignored",
             "Missing patch or material",
             "Truncated patch or material",

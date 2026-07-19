@@ -14,6 +14,17 @@ from typing import Iterable
 
 
 TARGET_KINDS = frozenset({"staged", "working-tree"})
+LOCKFILE_NAMES = frozenset({
+    "cargo.lock",
+    "composer.lock",
+    "gemfile.lock",
+    "package-lock.json",
+    "pipfile.lock",
+    "pnpm-lock.yaml",
+    "poetry.lock",
+    "uv.lock",
+    "yarn.lock",
+})
 @dataclass(frozen=True)
 class SnapshotEntry:
     path: str
@@ -24,6 +35,7 @@ class SnapshotEntry:
     uncommitted: bool
     coverage: str
     omission_reason: str | None
+    source_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -51,7 +63,7 @@ class GitSnapshot:
 @dataclass(frozen=True)
 class _CapturedMaterial:
     patch: bytes
-    name_status: tuple[tuple[str, str], ...]
+    name_status: tuple[tuple[str, str, str | None], ...]
     numstat: tuple[tuple[str, int | None], ...]
     untracked: tuple[tuple[str, bytes], ...]
     included_ignored_paths: tuple[str, ...]
@@ -75,34 +87,57 @@ def _decode_path(value: bytes) -> str:
     return value.decode("utf-8", errors="surrogateescape")
 
 
-def _parse_name_status(payload: bytes) -> tuple[tuple[str, str], ...]:
+def _parse_name_status(payload: bytes) -> tuple[tuple[str, str, str | None], ...]:
     tokens = [token for token in payload.split(b"\0") if token]
-    if len(tokens) % 2:
-        raise RuntimeError("unexpected git name-status output")
-    return tuple(
-        (tokens[index].decode("ascii", errors="replace"), _decode_path(tokens[index + 1]))
-        for index in range(0, len(tokens), 2)
-    )
+    rows: list[tuple[str, str, str | None]] = []
+    index = 0
+    while index < len(tokens):
+        status = tokens[index].decode("ascii", errors="replace")
+        if status.startswith(("R", "C")):
+            if index + 2 >= len(tokens):
+                raise RuntimeError("unexpected git rename status output")
+            source_path = _decode_path(tokens[index + 1])
+            path = _decode_path(tokens[index + 2])
+            index += 3
+        else:
+            if index + 1 >= len(tokens):
+                raise RuntimeError("unexpected git name-status output")
+            source_path = None
+            path = _decode_path(tokens[index + 1])
+            index += 2
+        rows.append((status, path, source_path))
+    return tuple(rows)
 
 
 def _parse_numstat(payload: bytes) -> tuple[tuple[str, int | None], ...]:
     rows: list[tuple[str, int | None]] = []
-    for record in payload.split(b"\0"):
-        if not record:
-            continue
+    records = payload.split(b"\0")
+    if records and not records[-1]:
+        records.pop()
+    index = 0
+    while index < len(records):
+        record = records[index]
         fields = record.split(b"\t", 2)
         if len(fields) != 3:
             raise RuntimeError("unexpected git numstat output")
         added, deleted, raw_path = fields
+        if raw_path:
+            path = _decode_path(raw_path)
+            index += 1
+        else:
+            if index + 2 >= len(records):
+                raise RuntimeError("unexpected git rename numstat output")
+            path = _decode_path(records[index + 2])
+            index += 3
         changed_lines = None
         if added != b"-" and deleted != b"-":
             changed_lines = int(added) + int(deleted)
-        rows.append((_decode_path(raw_path), changed_lines))
+        rows.append((path, changed_lines))
     return tuple(rows)
 
 
 def _diff_arguments(target_kind: str, base_sha: str, *options: str) -> list[str]:
-    args = ["diff", *options, "--no-renames"]
+    args = ["diff", *options, "--find-renames"]
     if target_kind == "staged":
         args.append("--cached")
     args.extend([base_sha, "--"])
@@ -110,7 +145,7 @@ def _diff_arguments(target_kind: str, base_sha: str, *options: str) -> list[str]
 
 
 def _uncommitted_arguments(target_kind: str, head_sha: str) -> list[str]:
-    args = ["diff", "--name-only", "-z", "--no-renames"]
+    args = ["diff", "--name-only", "-z", "--find-renames"]
     if target_kind == "staged":
         args.append("--cached")
     args.extend([head_sha, "--"])
@@ -309,6 +344,39 @@ def _is_gitlink(repository: Path, base_sha: str, path: str) -> bool:
     )
 
 
+def _uses_lfs_filter(
+    repository: Path,
+    target_kind: str,
+    base_sha: str,
+    path: str,
+) -> bool:
+    current_args = ["check-attr"]
+    if target_kind == "staged":
+        current_args.append("--cached")
+    current_args.extend(["-z", "filter", "--", path])
+    current = _git(repository, *current_args, check=False)
+    base = _git(
+        repository,
+        "check-attr",
+        f"--source={base_sha}",
+        "-z",
+        "filter",
+        "--",
+        path,
+        check=False,
+    )
+    return any(
+        tokens[-1] == b"lfs"
+        for payload in (current, base)
+        if (tokens := [token for token in payload.split(b"\0") if token])
+    )
+
+
+def _is_lockfile(path: str) -> bool:
+    name = PurePosixPath(path).name.lower()
+    return name in LOCKFILE_NAMES or name.endswith((".lock", ".lock.json"))
+
+
 def capture_git_snapshot(
     *,
     repository: str | Path,
@@ -354,7 +422,7 @@ def capture_git_snapshot(
     if first != second:
         raise RuntimeError("local target changed while capturing snapshot; retry")
 
-    target_paths = {path for _, path in second.name_status}
+    target_paths = {path for _, path, _ in second.name_status}
     target_paths.update(path for path, _ in second.untracked)
     generated = frozenset(generated.intersection(target_paths))
     stats = dict(second.numstat)
@@ -363,12 +431,19 @@ def capture_git_snapshot(
     metadata_only: list[str] = []
     unavailable_patches = 0
 
-    for status, path in second.name_status:
+    for status, path, source_path in second.name_status:
         content = _tracked_content(root, normalized_target, path)
         changed_lines = stats.get(path)
-        if _is_gitlink(root, base_sha, path):
+        if status.startswith(("R", "C")):
+            material = "rename"
+            changed_lines = None
+        elif _is_gitlink(root, base_sha, path):
             material = "submodule"
             changed_lines = None
+        elif _uses_lfs_filter(root, normalized_target, base_sha, path):
+            material = "lfs-pointer"
+        elif _is_lockfile(path):
+            material = "lockfile"
         elif path in generated:
             material = "generated"
         else:
@@ -390,13 +465,21 @@ def capture_git_snapshot(
                 uncommitted=path in uncommitted,
                 coverage=coverage,
                 omission_reason=omission_reason,
+                source_path=source_path,
             )
         )
 
     for path, content in second.untracked:
         is_generated = path in generated
         is_text = _is_text(content)
-        material = "generated" if is_generated else ("text" if is_text else "binary")
+        if _uses_lfs_filter(root, normalized_target, base_sha, path):
+            material = "lfs-pointer"
+        elif _is_lockfile(path):
+            material = "lockfile"
+        else:
+            material = "generated" if is_generated else (
+                "text" if is_text else "binary"
+            )
         changed_lines = _line_count(content) if is_text else None
         omission_reason = None
         coverage = "local-lines"
@@ -432,6 +515,9 @@ def capture_git_snapshot(
     )
     if second != final:
         raise RuntimeError("local target changed while capturing snapshot; retry")
+    final_head_sha = _git(root, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
+    if final_head_sha != head_sha:
+        raise RuntimeError("HEAD changed while capturing snapshot; retry")
     snapshot_id = _fingerprint(
         target_kind=normalized_target,
         base_sha=base_sha,
