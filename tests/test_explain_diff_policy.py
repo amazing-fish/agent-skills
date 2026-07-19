@@ -312,14 +312,26 @@ class DiffSizePolicyTests(unittest.TestCase):
                 target_kind="branch",
             )
 
-    def test_permalink_gap_cannot_exceed_changed_files(self):
+    def test_permalink_gap_can_exceed_base_relative_changed_files(self):
+        result = self.module.classify_diff_size(
+            changed_files=0,
+            changed_lines=0,
+            patch_bytes=0,
+            host="github.com",
+            target_kind="working-tree",
+            permalink_gap_files=1,
+        )
+        self.assertFalse(result.fixed_compare_covers_target)
+        self.assertFalse(result.evidence_complete)
+
+    def test_negative_permalink_gap_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "permalink_gap_files"):
             self.module.classify_diff_size(
-                changed_files=1,
+                changed_files=0,
                 changed_lines=0,
                 patch_bytes=0,
                 target_kind="working-tree",
-                permalink_gap_files=2,
+                permalink_gap_files=-1,
             )
 
 
@@ -327,6 +339,7 @@ class GitSnapshotPolicyTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.module = _load_module("capture_git_snapshot")
+        cls.classifier = _load_module("classify_diff_size")
 
     def test_tracked_worktree_modification_has_stable_snapshot_identity(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -438,6 +451,45 @@ class GitSnapshotPolicyTests(unittest.TestCase):
             self.assertEqual(result.permalink_gap_files, 0)
             self.assertEqual(result.permalink_gap_paths, ())
             self.assertEqual(result.entries[0].coverage, "immutable-head")
+
+    def test_base_relative_cancellation_keeps_head_permalink_gap(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            base_sha = _git(repository, "rev-parse", "HEAD").stdout.strip()
+            tracked = repository / "tracked.txt"
+            tracked.write_text("committed\n", encoding="utf-8")
+            _git(repository, "add", "tracked.txt")
+            _git(repository, "commit", "-m", "committed change")
+
+            tracked.write_text("before\n", encoding="utf-8")
+            worktree = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+                base=base_sha,
+            )
+            _git(repository, "add", "tracked.txt")
+            staged = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="staged",
+                base=base_sha,
+            )
+
+            for snapshot in (worktree, staged):
+                with self.subTest(target_kind=snapshot.target_kind):
+                    self.assertEqual(snapshot.changed_files, 0)
+                    self.assertEqual(snapshot.permalink_gap_files, 1)
+                    self.assertEqual(snapshot.permalink_gap_paths, ("tracked.txt",))
+                    decision = self.classifier.classify_diff_size(
+                        changed_files=snapshot.changed_files,
+                        changed_lines=snapshot.changed_lines,
+                        patch_bytes=snapshot.patch_bytes,
+                        unavailable_patches=snapshot.unavailable_patches,
+                        host="github.com",
+                        target_kind=snapshot.target_kind,
+                        permalink_gap_files=snapshot.permalink_gap_files,
+                    )
+                    self.assertFalse(decision.fixed_compare_covers_target)
+                    self.assertFalse(decision.evidence_complete)
 
     def test_staged_target_excludes_unstaged_and_untracked_material(self):
         with tempfile.TemporaryDirectory() as temp:

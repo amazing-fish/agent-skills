@@ -16,6 +16,8 @@ Do not commit, push, upload, mirror, or otherwise publish local material merely 
 
 Count each repository-relative target path once. `staged` includes the index relative to the selected base and excludes unstaged, untracked, and ignored material. `working-tree` includes the final tracked state plus non-ignored untracked files; ignored files remain outside the target unless the user explicitly names them.
 
+`changed_files` is base-relative, while `permalink_gap_paths` is HEAD-relative. Keep these dimensions separate: when a local edit restores a HEAD-changed path exactly to the selected base, the target has no base-relative changed file but still has one mutable path that a `head_sha` permalink cannot represent. Therefore `permalink_gap_files` may exceed `changed_files`; pass both values unchanged to the classifier so it keeps `fixed_compare_covers_target=false`.
+
 `changed_lines` is additions plus deletions from Git numstat for tracked text. For untracked UTF-8 text without NUL bytes, count physical lines as additions. An unknown line count contributes zero to the aggregate but remains unknown in the path record; never present it as a confirmed zero-line change.
 
 `patch_bytes` is the byte length of the exact local `git diff --binary --full-index --no-ext-diff --no-textconv` material plus the raw byte lengths of included untracked or explicitly scoped ignored files. The helper hashes these bytes and emits only their aggregate size and metadata, not their contents.

@@ -62,10 +62,8 @@ def classify_diff_size(
         )
     if permalink_gap_files is None:
         permalink_gap_files = 0 if normalized_target == "committed" else changed_files
-    if permalink_gap_files < 0 or permalink_gap_files > changed_files:
-        raise ValueError(
-            "permalink_gap_files must be between zero and changed_files"
-        )
+    if permalink_gap_files < 0:
+        raise ValueError("permalink_gap_files must be non-negative")
     if normalized_target == "committed" and permalink_gap_files:
         raise ValueError("committed target cannot have permalink_gap_files")
 
@@ -150,7 +148,8 @@ def _parser() -> argparse.ArgumentParser:
         type=int,
         help=(
             "changed paths absent from the immutable head; mutable targets default "
-            "conservatively to all changed files"
+            "conservatively to all changed files and cancellation paths may make "
+            "this count exceed base-relative changed_files"
         ),
     )
     parser.add_argument(
