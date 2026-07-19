@@ -99,6 +99,20 @@ def _run_git(repository: Path, *args: str) -> subprocess.CompletedProcess[bytes]
     )
 
 
+def _run_git_with_input(
+    repository: Path,
+    input_bytes: bytes,
+    *args: str,
+) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
+        ["git", "-C", str(repository), *args],
+        check=False,
+        input=input_bytes,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
 def _git(repository: Path, *args: str, check: bool = True) -> bytes:
     completed = _run_git(repository, *args)
     if check and completed.returncode != 0:
@@ -337,16 +351,32 @@ def _read_explicit_ignored(
 ) -> tuple[_UntrackedMaterial, ...]:
     items: list[_UntrackedMaterial] = []
     for path in sorted(paths):
-        tracked = _git(repository, "ls-files", "-z", "--", path)
+        tracked = _git(
+            repository,
+            "ls-files",
+            "-z",
+            "--",
+            *_literal_pathspecs((path,)),
+        )
         if tracked:
             raise ValueError(f"explicit ignored path is tracked by Git: {path}")
-        ignored = _git(
+        ignored_probe = _run_git_with_input(
             repository,
+            path.encode("utf-8", errors="surrogateescape") + b"\0",
             "check-ignore",
-            "--",
-            path,
-            check=False,
+            "--no-index",
+            "--stdin",
+            "-z",
         )
+        if ignored_probe.returncode not in {0, 1}:
+            message = ignored_probe.stderr.decode(
+                "utf-8",
+                errors="replace",
+            ).strip()
+            raise RuntimeError(
+                f"git check-ignore --no-index --stdin -z failed: {message}"
+            )
+        ignored = ignored_probe.stdout
         if not ignored:
             raise ValueError(f"explicit ignored path is not ignored by Git: {path}")
         absolute = repository / Path(path)

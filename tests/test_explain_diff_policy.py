@@ -974,6 +974,31 @@ class GitSnapshotPolicyTests(unittest.TestCase):
                     included_ignored_paths=("tracked.txt",),
                 )
 
+    def test_explicit_ignored_path_with_pathspec_metacharacters_is_literal(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            (repository / "fooa").write_text("tracked sibling\n", encoding="utf-8")
+            _git(repository, "add", "fooa")
+            _git(repository, "commit", "-m", "add tracked sibling")
+            (repository / ".gitignore").write_text(
+                "foo*\n",
+                encoding="utf-8",
+            )
+            _git(repository, "add", ".gitignore")
+            _git(repository, "commit", "-m", "add pathspec fixtures")
+            (repository / "foo[a]").write_text("ignored literal\n", encoding="utf-8")
+
+            result = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+                included_ignored_paths=("foo[a]",),
+            )
+
+            self.assertEqual(result.changed_files, 1)
+            self.assertEqual(result.included_ignored_paths, ("foo[a]",))
+            self.assertEqual(result.entries[0].path, "foo[a]")
+            self.assertEqual(result.entries[0].status, "!")
+
     def test_cli_emits_machine_readable_snapshot_without_content(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))
