@@ -1250,6 +1250,21 @@ class GitSnapshotPolicyTests(unittest.TestCase):
                     included_ignored_paths=("C:/outside.txt",),
                 )
 
+    def test_posix_scope_preserves_literal_backslash(self):
+        with mock.patch.object(self.module.os, "name", "posix"):
+            normalized = self.module._normalize_paths(
+                (r"foo\bar",),
+                label="scope path",
+            )
+
+        self.assertEqual(normalized, frozenset({r"foo\bar"}))
+        self.assertTrue(
+            self.module._matches_path_or_descendant(r"foo\bar", normalized)
+        )
+        self.assertFalse(
+            self.module._matches_path_or_descendant("foo/bar", normalized)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

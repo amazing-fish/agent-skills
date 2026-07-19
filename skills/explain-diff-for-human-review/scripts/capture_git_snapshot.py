@@ -691,12 +691,13 @@ def _fingerprint(
 def _normalize_paths(paths: Iterable[str], *, label: str) -> frozenset[str]:
     normalized: set[str] = set()
     for value in paths:
-        path = PurePosixPath(value.replace("\\", "/"))
+        platform_value = value.replace("\\", "/") if os.name == "nt" else value
+        path = PurePosixPath(platform_value)
         if (
             path.is_absolute()
             or ".." in path.parts
             or str(path) in {"", "."}
-            or (path.parts and ":" in path.parts[0])
+            or (os.name == "nt" and path.parts and ":" in path.parts[0])
         ):
             raise ValueError(f"{label} must be repository-relative: {value}")
         normalized.add(str(path))
