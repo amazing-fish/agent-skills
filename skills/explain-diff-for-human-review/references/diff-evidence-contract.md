@@ -27,11 +27,12 @@ Count each repository-relative target path once. `staged` includes the index rel
 | Untracked text | Count only in `working-tree` | Physical UTF-8 lines | Count raw bytes | Local lines may inform analysis, but the HTML omits source and discloses the permalink gap. |
 | Binary | Count | Unknown | Count captured bytes | Metadata-only; increment unavailable patches, list the path and reason, and set local line evidence incomplete. |
 | Generated/vendor | Count when in target | Count only when deterministic textual stats exist | Count | Metadata-only even when line counts exist; increment unavailable patches and disclose the classification source. Pass known paths with `--generated-path`. |
+| Submodule gitlink | Count | Unknown | Count captured diff bytes | Detect Git mode `160000`; treat the commit-pointer change as metadata-only and increment unavailable patches. Never interpret numeric numstat as reviewed source lines. |
 | Ignored | Exclude by default | Exclude | Exclude | State the default exclusion. If the user explicitly scopes a file, pass `--include-ignored-path`, then count it by the untracked rules and mark status `!`. Never enumerate ignored paths speculatively. |
 | Missing patch or material | Count when the target inventory proves the path | Count only known stats | Count only received bytes | Increment unavailable patches, identify the path as missing, and set evidence incomplete. Do not silently fall back to another version. |
 | Truncated patch or material | Count | Count only verified complete stats | Count only received bytes | Increment unavailable patches, record the truncation boundary and omitted remainder, and set evidence incomplete. |
 
-Binary, generated/vendor, missing, and truncated paths appear in the metadata-only or omission disclosure even when their byte size is known. `local_evidence_complete` describes line-level local coverage only. Final report `evidence_complete` additionally incorporates hosting coverage: a non-clean GitHub mutable target is incomplete because immutable links do not cover its local paths.
+Binary, generated/vendor, submodule, missing, and truncated paths appear in the metadata-only or omission disclosure even when their byte size is known. `local_evidence_complete` describes line-level local coverage only. Final report `evidence_complete` additionally incorporates hosting coverage: a non-clean GitHub mutable target is incomplete because immutable links do not cover its local paths.
 
 ## Snapshot helper
 

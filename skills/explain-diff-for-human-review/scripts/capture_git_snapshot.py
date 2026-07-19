@@ -296,6 +296,17 @@ def _tracked_content(repository: Path, target_kind: str, path: str) -> bytes:
     return b""
 
 
+def _is_gitlink(repository: Path, base_sha: str, path: str) -> bool:
+    current = _git(repository, "ls-files", "--stage", "-z", "--", path)
+    base = _git(repository, "ls-tree", "-z", base_sha, "--", path)
+    return any(
+        record.startswith(b"160000 ")
+        for payload in (current, base)
+        for record in payload.split(b"\0")
+        if record
+    )
+
+
 def capture_git_snapshot(
     *,
     repository: str | Path,
@@ -353,9 +364,13 @@ def capture_git_snapshot(
     for status, path in second.name_status:
         content = _tracked_content(root, normalized_target, path)
         changed_lines = stats.get(path)
-        material = "generated" if path in generated else (
-            "text" if changed_lines is not None else "binary"
-        )
+        if _is_gitlink(root, base_sha, path):
+            material = "submodule"
+            changed_lines = None
+        elif path in generated:
+            material = "generated"
+        else:
+            material = "text" if changed_lines is not None else "binary"
         omission_reason = None
         coverage = "local-lines" if path in uncommitted else "immutable-head"
         if material != "text":

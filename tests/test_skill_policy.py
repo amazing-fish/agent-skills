@@ -198,6 +198,7 @@ class SkillPolicyTests(unittest.TestCase):
             "Untracked text",
             "Binary",
             "Generated/vendor",
+            "Submodule gitlink",
             "Ignored",
             "Missing patch or material",
             "Truncated patch or material",

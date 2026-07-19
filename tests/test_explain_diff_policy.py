@@ -457,6 +457,54 @@ class GitSnapshotPolicyTests(unittest.TestCase):
             self.assertEqual(result.uncommitted_paths, ("tracked.txt",))
             self.assertEqual(tuple(entry.path for entry in result.entries), ("tracked.txt",))
 
+    def test_submodule_gitlink_is_metadata_only_for_worktree_and_staged(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            child_root = root / "child-root"
+            parent_root = root / "parent-root"
+            child_root.mkdir()
+            parent_root.mkdir()
+            child = _create_repository(child_root)
+            parent = _create_repository(parent_root)
+            _git(
+                parent,
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                str(child),
+                "dependency",
+            )
+            _git(parent, "commit", "-am", "add dependency")
+
+            dependency = parent / "dependency"
+            _git(dependency, "config", "user.email", "tests@example.invalid")
+            _git(dependency, "config", "user.name", "Policy Tests")
+            (dependency / "tracked.txt").write_text("updated\n", encoding="utf-8")
+            _git(dependency, "add", "tracked.txt")
+            _git(dependency, "commit", "-m", "update dependency")
+
+            worktree = self.module.capture_git_snapshot(
+                repository=parent,
+                target_kind="working-tree",
+            )
+            _git(parent, "add", "dependency")
+            staged = self.module.capture_git_snapshot(
+                repository=parent,
+                target_kind="staged",
+            )
+
+            for result in (worktree, staged):
+                with self.subTest(target_kind=result.target_kind):
+                    self.assertEqual(result.changed_files, 1)
+                    self.assertEqual(result.changed_lines, 0)
+                    self.assertEqual(result.unavailable_patches, 1)
+                    self.assertEqual(result.metadata_only_paths, ("dependency",))
+                    self.assertFalse(result.local_evidence_complete)
+                    self.assertEqual(result.entries[0].material, "submodule")
+                    self.assertIsNone(result.entries[0].changed_lines)
+                    self.assertEqual(result.entries[0].coverage, "metadata-only")
+
     def test_ignored_material_is_excluded_unless_explicitly_scoped(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))
