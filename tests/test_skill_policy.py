@@ -175,6 +175,36 @@ class SkillPolicyTests(unittest.TestCase):
             skill,
         )
 
+    def test_github_mutable_target_uses_snapshot_evidence_contract(self):
+        skill = (
+            ROOT / "skills" / "explain-diff-for-human-review" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        contract = (
+            ROOT
+            / "skills"
+            / "explain-diff-for-human-review"
+            / "references"
+            / "diff-evidence-contract.md"
+        ).read_text(encoding="utf-8")
+        for required_policy in (
+            "mutable-local-snapshot",
+            "fixed_compare_covers_target=false",
+            "不得用 zero-diff compare 作为改动证据",
+            "不要为了给 mutable snapshot 制造永久链接",
+        ):
+            with self.subTest(required_policy=required_policy):
+                self.assertIn(required_policy, skill)
+        for material in (
+            "Untracked text",
+            "Binary",
+            "Generated/vendor",
+            "Ignored",
+            "Missing patch or material",
+            "Truncated patch or material",
+        ):
+            with self.subTest(material=material):
+                self.assertIn(f"| {material} |", contract)
+
     def test_independent_review_preserves_read_only_and_fallback_boundaries(self):
         skill = (
             ROOT / "skills" / "explain-diff-for-human-review" / "SKILL.md"

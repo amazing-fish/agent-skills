@@ -24,6 +24,27 @@ def _load_module(name: str):
     return module
 
 
+def _git(repository: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(repository), *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _create_repository(root: Path) -> Path:
+    repository = root / "repository"
+    repository.mkdir()
+    _git(repository, "init")
+    _git(repository, "config", "user.email", "tests@example.invalid")
+    _git(repository, "config", "user.name", "Policy Tests")
+    (repository / "tracked.txt").write_text("before\n", encoding="utf-8")
+    _git(repository, "add", "tracked.txt")
+    _git(repository, "commit", "-m", "initial")
+    return repository
+
+
 class ResolveReportPathTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -133,6 +154,48 @@ class DiffSizePolicyTests(unittest.TestCase):
         )
         self.assertEqual(result.mode, "small")
         self.assertEqual(result.detail_delivery, "pinned-github-links-only")
+        self.assertEqual(result.evidence_mode, "immutable-git")
+        self.assertTrue(result.fixed_compare_covers_target)
+
+    def test_github_worktree_uses_local_snapshot_disclosure(self):
+        result = self.module.classify_diff_size(
+            changed_files=1,
+            changed_lines=2,
+            patch_bytes=100,
+            host="github.com",
+            target_kind="working-tree",
+        )
+        self.assertEqual(result.evidence_mode, "mutable-local-snapshot")
+        self.assertEqual(
+            result.detail_delivery,
+            "local-snapshot-metadata-only",
+        )
+        self.assertFalse(result.fixed_compare_covers_target)
+        self.assertFalse(result.evidence_complete)
+
+    def test_clean_github_worktree_is_complete_without_a_compare_claim(self):
+        result = self.module.classify_diff_size(
+            changed_files=0,
+            changed_lines=0,
+            patch_bytes=0,
+            host="github.com",
+            target_kind="working-tree",
+        )
+        self.assertEqual(result.evidence_mode, "mutable-local-snapshot")
+        self.assertTrue(result.fixed_compare_covers_target)
+        self.assertTrue(result.evidence_complete)
+
+    def test_github_worktree_with_committed_only_diff_has_no_permalink_gap(self):
+        result = self.module.classify_diff_size(
+            changed_files=1,
+            changed_lines=2,
+            patch_bytes=100,
+            host="github.com",
+            target_kind="working-tree",
+            permalink_gap_files=0,
+        )
+        self.assertTrue(result.fixed_compare_covers_target)
+        self.assertTrue(result.evidence_complete)
 
     def test_github_standard_uses_pinned_links_only(self):
         result = self.module.classify_diff_size(
@@ -207,6 +270,31 @@ class DiffSizePolicyTests(unittest.TestCase):
             "pinned-github-links-only",
         )
 
+    def test_cli_distinguishes_mutable_github_target(self):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_DIR / "classify_diff_size.py"),
+                "--changed-files",
+                "1",
+                "--changed-lines",
+                "2",
+                "--patch-bytes",
+                "100",
+                "--host",
+                "github.com",
+                "--target-kind",
+                "staged",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["evidence_mode"], "mutable-local-snapshot")
+        self.assertFalse(payload["fixed_compare_covers_target"])
+        self.assertFalse(payload["evidence_complete"])
+
     def test_negative_metric_is_rejected(self):
         with self.assertRaises(ValueError):
             self.module.classify_diff_size(
@@ -214,6 +302,217 @@ class DiffSizePolicyTests(unittest.TestCase):
                 changed_lines=0,
                 patch_bytes=0,
             )
+
+    def test_unknown_target_kind_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "target_kind"):
+            self.module.classify_diff_size(
+                changed_files=0,
+                changed_lines=0,
+                patch_bytes=0,
+                target_kind="branch",
+            )
+
+    def test_permalink_gap_cannot_exceed_changed_files(self):
+        with self.assertRaisesRegex(ValueError, "permalink_gap_files"):
+            self.module.classify_diff_size(
+                changed_files=1,
+                changed_lines=0,
+                patch_bytes=0,
+                target_kind="working-tree",
+                permalink_gap_files=2,
+            )
+
+
+class GitSnapshotPolicyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.module = _load_module("capture_git_snapshot")
+
+    def test_tracked_worktree_modification_has_stable_snapshot_identity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            (repository / "tracked.txt").write_text(
+                "after\nsecond\n",
+                encoding="utf-8",
+            )
+
+            first = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+            second = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+
+            self.assertEqual(first.snapshot_id, second.snapshot_id)
+            self.assertRegex(first.snapshot_id, r"^sha256:[0-9a-f]{64}$")
+            self.assertEqual(first.changed_files, 1)
+            self.assertEqual(first.changed_lines, 3)
+            self.assertEqual(first.uncommitted_paths, ("tracked.txt",))
+            self.assertEqual(first.permalink_gap_paths, ("tracked.txt",))
+            self.assertEqual(first.permalink_gap_files, 1)
+            self.assertEqual(first.unavailable_patches, 0)
+
+    def test_untracked_text_counts_lines_and_bytes_without_source_output(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            content = "one\ntwo\n"
+            (repository / "notes.txt").write_text(content, encoding="utf-8")
+
+            result = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+            payload = json.loads(self.module.snapshot_to_json(result))
+
+            self.assertEqual(result.changed_files, 1)
+            self.assertEqual(result.changed_lines, 2)
+            self.assertGreaterEqual(result.patch_bytes, len(content.encode("utf-8")))
+            self.assertEqual(result.unavailable_patches, 0)
+            self.assertEqual(result.entries[0].material, "text")
+            self.assertNotIn(content, json.dumps(payload))
+
+    def test_untracked_binary_and_generated_are_metadata_only(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            (repository / "asset.bin").write_bytes(b"\x00\x01\x02")
+            generated = repository / "generated.txt"
+            generated.write_text("generated\nlines\n", encoding="utf-8")
+
+            unclassified = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+            result = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+                generated_paths=("generated.txt",),
+            )
+
+            self.assertEqual(result.changed_files, 2)
+            self.assertEqual(result.changed_lines, 2)
+            self.assertEqual(result.unavailable_patches, 2)
+            self.assertEqual(
+                result.metadata_only_paths,
+                ("asset.bin", "generated.txt"),
+            )
+            self.assertFalse(result.local_evidence_complete)
+            self.assertGreaterEqual(result.patch_bytes, 3 + len(generated.read_bytes()))
+            self.assertEqual(result.generated_paths, ("generated.txt",))
+            self.assertNotEqual(result.snapshot_id, unclassified.snapshot_id)
+
+    def test_clean_head_equals_base_is_a_complete_zero_change_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+
+            result = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+
+            self.assertEqual(result.base_sha, result.head_sha)
+            self.assertEqual(result.changed_files, 0)
+            self.assertEqual(result.changed_lines, 0)
+            self.assertEqual(result.patch_bytes, 0)
+            self.assertEqual(result.uncommitted_paths, ())
+            self.assertEqual(result.permalink_gap_paths, ())
+            self.assertEqual(result.permalink_gap_files, 0)
+            self.assertTrue(result.local_evidence_complete)
+
+    def test_clean_worktree_against_older_base_has_only_committed_evidence(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            base_sha = _git(repository, "rev-parse", "HEAD").stdout.strip()
+            (repository / "tracked.txt").write_text("committed\n", encoding="utf-8")
+            _git(repository, "add", "tracked.txt")
+            _git(repository, "commit", "-m", "committed change")
+
+            result = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+                base=base_sha,
+            )
+
+            self.assertEqual(result.changed_files, 1)
+            self.assertEqual(result.permalink_gap_files, 0)
+            self.assertEqual(result.permalink_gap_paths, ())
+            self.assertEqual(result.entries[0].coverage, "immutable-head")
+
+    def test_staged_target_excludes_unstaged_and_untracked_material(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            tracked = repository / "tracked.txt"
+            tracked.write_text("staged\n", encoding="utf-8")
+            _git(repository, "add", "tracked.txt")
+            tracked.write_text("unstaged\n", encoding="utf-8")
+            (repository / "untracked.txt").write_text("outside\n", encoding="utf-8")
+
+            result = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="staged",
+            )
+
+            self.assertEqual(result.changed_files, 1)
+            self.assertEqual(result.uncommitted_paths, ("tracked.txt",))
+            self.assertEqual(tuple(entry.path for entry in result.entries), ("tracked.txt",))
+
+    def test_ignored_material_is_excluded_unless_explicitly_scoped(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            (repository / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+            _git(repository, "add", ".gitignore")
+            _git(repository, "commit", "-m", "ignore generated material")
+            (repository / "ignored.txt").write_text("ignored\n", encoding="utf-8")
+
+            default = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+            explicit = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+                included_ignored_paths=("ignored.txt",),
+            )
+
+            self.assertEqual(default.changed_files, 0)
+            self.assertEqual(explicit.changed_files, 1)
+            self.assertEqual(explicit.included_ignored_paths, ("ignored.txt",))
+            self.assertEqual(explicit.entries[0].status, "!")
+
+    def test_cli_emits_machine_readable_snapshot_without_content(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            secret_marker = "local-only-marker"
+            (repository / "notes.txt").write_text(secret_marker, encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT_DIR / "capture_git_snapshot.py"),
+                    "--repository",
+                    str(repository),
+                    "--target-kind",
+                    "working-tree",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            payload = json.loads(completed.stdout)
+            self.assertEqual(payload["schema_version"], 1)
+            self.assertEqual(payload["target_kind"], "working-tree")
+            self.assertNotIn(secret_marker, completed.stdout)
+
+    def test_explicit_ignored_path_must_stay_repository_relative(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            with self.assertRaisesRegex(ValueError, "repository-relative"):
+                self.module.capture_git_snapshot(
+                    repository=repository,
+                    target_kind="working-tree",
+                    included_ignored_paths=("C:/outside.txt",),
+                )
 
 
 if __name__ == "__main__":
