@@ -67,7 +67,7 @@ rg "<symbol>" <relevant-paths>
 - `standard`：文件数不超过 80、改动行数不超过 4,000、patch 不超过 1 MiB。
 - `large`：超过任一 `standard` 阈值。
 
-阈值判断使用“全部满足才进入该档”的规则。报告页头必须显示所选模式、统计值、无法进行行级检视的数量和未纳入正文的材料。统计 staged 或 working-tree 时，如果本 Skill 包含 `scripts/capture_git_snapshot.py`，使用它生成不含源码的 `sha256:` 快照身份、路径级 coverage 和统计输入；快照捕获前后不一致时停止并重试，不要把漂移中的状态标记为已固定。
+阈值判断使用“全部满足才进入该档”的规则。报告页头必须显示所选模式、统计值、无法进行行级检视的数量和未纳入正文的材料。统计 staged 或 working-tree 时，如果本 Skill 包含 `scripts/capture_git_snapshot.py`，使用它生成不含源码的 `sha256:` 快照身份、路径级 coverage 和统计输入；检视目标是指定文件或目录时，对每个范围传入 `--path`，不得让无关的本地改动进入快照身份、统计或路径披露。快照捕获前后不一致时停止并重试，不要把漂移中的状态标记为已固定。
 
 按模式控制细节：
 

@@ -536,6 +536,43 @@ class GitSnapshotPolicyTests(unittest.TestCase):
             self.assertEqual(result.uncommitted_paths, ("tracked.txt",))
             self.assertEqual(tuple(entry.path for entry in result.entries), ("tracked.txt",))
 
+    def test_path_scoped_snapshot_excludes_unrelated_local_material(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            for name in ("staged.txt", "unstaged.txt"):
+                (repository / name).write_text("before\n", encoding="utf-8")
+            (repository / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+            _git(repository, "add", ".gitignore", "staged.txt", "unstaged.txt")
+            _git(repository, "commit", "-m", "add scope fixtures")
+
+            (repository / "tracked.txt").write_text("in scope\n", encoding="utf-8")
+            (repository / "staged.txt").write_text("staged one\n", encoding="utf-8")
+            _git(repository, "add", "staged.txt")
+            (repository / "unstaged.txt").write_text("unstaged one\n", encoding="utf-8")
+            (repository / "untracked.txt").write_text("untracked one\n", encoding="utf-8")
+            (repository / "ignored.txt").write_text("ignored one\n", encoding="utf-8")
+
+            first = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+                scope_paths=("tracked.txt",),
+            )
+            (repository / "staged.txt").write_text("staged two\n", encoding="utf-8")
+            _git(repository, "add", "staged.txt")
+            (repository / "unstaged.txt").write_text("unstaged two\n", encoding="utf-8")
+            (repository / "untracked.txt").write_text("untracked two\n", encoding="utf-8")
+            (repository / "ignored.txt").write_text("ignored two\n", encoding="utf-8")
+            second = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+                scope_paths=("tracked.txt",),
+            )
+
+            self.assertEqual(first.snapshot_id, second.snapshot_id)
+            self.assertEqual(first.scope_paths, ("tracked.txt",))
+            self.assertEqual(tuple(entry.path for entry in first.entries), ("tracked.txt",))
+            self.assertEqual(first.uncommitted_paths, ("tracked.txt",))
+
     def test_submodule_gitlink_is_metadata_only_for_worktree_and_staged(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -610,6 +647,31 @@ class GitSnapshotPolicyTests(unittest.TestCase):
                     self.assertEqual(result.entries[0].source_path, "tracked.txt")
                     self.assertEqual(result.entries[0].material, "rename")
 
+    def test_pure_copy_is_one_metadata_only_relationship(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            (repository / "copied.txt").write_text("before\n", encoding="utf-8")
+            _git(repository, "add", "copied.txt")
+
+            staged = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="staged",
+            )
+            worktree = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+
+            for result in (staged, worktree):
+                with self.subTest(target_kind=result.target_kind):
+                    self.assertEqual(result.changed_files, 1)
+                    self.assertEqual(result.changed_lines, 0)
+                    self.assertEqual(result.unavailable_patches, 1)
+                    self.assertTrue(result.entries[0].status.startswith("C"))
+                    self.assertEqual(result.entries[0].source_path, "tracked.txt")
+                    self.assertEqual(result.entries[0].path, "copied.txt")
+                    self.assertEqual(result.entries[0].material, "copy")
+
     def test_lfs_pointer_is_metadata_only_without_reading_lfs_object(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))
@@ -657,6 +719,135 @@ class GitSnapshotPolicyTests(unittest.TestCase):
                     self.assertEqual(result.entries[0].material, "lfs-pointer")
                     self.assertEqual(result.entries[0].coverage, "metadata-only")
 
+    def test_lfs_attribute_probe_errors_fail_closed(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            (repository / "tracked.txt").write_text("modified\n", encoding="utf-8")
+            original_run_git = self.module._run_git
+
+            for failed_probe in ("current", "base"):
+                with self.subTest(failed_probe=failed_probe):
+                    def fail_probe(repo, *args):
+                        is_attr = bool(args) and args[0] == "check-attr"
+                        is_base = any(arg.startswith("--source=") for arg in args)
+                        should_fail = is_attr and (
+                            (failed_probe == "base" and is_base)
+                            or (failed_probe == "current" and not is_base)
+                        )
+                        if should_fail:
+                            return subprocess.CompletedProcess(
+                                ["git", *args],
+                                1,
+                                stdout=b"",
+                                stderr=b"attribute probe failed",
+                            )
+                        return original_run_git(repo, *args)
+
+                    with mock.patch.object(
+                        self.module,
+                        "_run_git",
+                        side_effect=fail_probe,
+                    ):
+                        with self.assertRaisesRegex(RuntimeError, "attribute probe failed"):
+                            self.module.capture_git_snapshot(
+                                repository=repository,
+                                target_kind="working-tree",
+                            )
+
+    def test_untracked_lfs_object_is_metadata_only_without_content_read(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            (repository / ".gitattributes").write_text(
+                "*.dat filter=lfs\n",
+                encoding="utf-8",
+            )
+            _git(repository, "add", ".gitattributes")
+            _git(repository, "commit", "-m", "configure lfs")
+            asset = repository / "untracked.dat"
+            asset.write_bytes(b"local-lfs-object")
+
+            with mock.patch.object(
+                Path,
+                "read_bytes",
+                side_effect=AssertionError("untracked LFS object must not be read"),
+            ):
+                result = self.module.capture_git_snapshot(
+                    repository=repository,
+                    target_kind="working-tree",
+                )
+
+            self.assertEqual(result.changed_files, 1)
+            self.assertEqual(result.unavailable_patches, 1)
+            self.assertFalse(result.local_evidence_complete)
+            self.assertEqual(result.entries[0].material, "lfs-pointer")
+            self.assertEqual(result.entries[0].content_bytes, len(b"local-lfs-object"))
+
+    def test_untracked_nested_repository_is_disclosed_as_metadata_only(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            nested = repository / "vendor"
+            nested.mkdir()
+            _git(nested, "init")
+            _git(nested, "config", "user.email", "tests@example.invalid")
+            _git(nested, "config", "user.name", "Policy Tests")
+            (nested / "nested.txt").write_text("nested\n", encoding="utf-8")
+            _git(nested, "add", "nested.txt")
+            _git(nested, "commit", "-m", "nested repository")
+
+            result = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+
+            self.assertEqual(result.changed_files, 1)
+            self.assertEqual(result.changed_lines, 0)
+            self.assertEqual(result.unavailable_patches, 1)
+            self.assertFalse(result.local_evidence_complete)
+            self.assertEqual(result.entries[0].path.rstrip("/"), "vendor")
+            self.assertEqual(result.entries[0].material, "untracked-directory")
+            self.assertEqual(result.entries[0].coverage, "metadata-only")
+
+    def test_patch_capture_does_not_buffer_binary_diff_through_git_helper(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            (repository / "tracked.txt").write_text("modified\n", encoding="utf-8")
+            original_git = self.module._git
+
+            def reject_buffered_patch(repo, *args, **kwargs):
+                if "--binary" in args:
+                    raise AssertionError("binary patch must use streaming capture")
+                return original_git(repo, *args, **kwargs)
+
+            with mock.patch.object(
+                self.module,
+                "_git",
+                side_effect=reject_buffered_patch,
+            ):
+                result = self.module.capture_git_snapshot(
+                    repository=repository,
+                    target_kind="working-tree",
+                )
+
+            self.assertEqual(result.changed_files, 1)
+            self.assertGreater(result.patch_bytes, 0)
+
+    def test_index_deleted_path_recreated_untracked_is_counted_once(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            _git(repository, "rm", "--cached", "tracked.txt")
+
+            result = self.module.capture_git_snapshot(
+                repository=repository,
+                target_kind="working-tree",
+            )
+
+            self.assertEqual(result.changed_files, 1)
+            self.assertEqual(tuple(entry.path for entry in result.entries), ("tracked.txt",))
+            self.assertEqual(result.changed_lines, 0)
+            self.assertEqual(result.unavailable_patches, 1)
+            self.assertEqual(result.entries[0].material, "untracked-replacement")
+            self.assertEqual(result.entries[0].coverage, "metadata-only")
+
     def test_lockfile_is_metadata_only(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))
@@ -676,6 +867,51 @@ class GitSnapshotPolicyTests(unittest.TestCase):
             self.assertEqual(result.unavailable_patches, 1)
             self.assertEqual(result.entries[0].material, "lockfile")
             self.assertEqual(result.entries[0].coverage, "metadata-only")
+
+    def test_standard_lockfile_matrix_is_metadata_only(self):
+        lockfiles = (
+            "npm-shrinkwrap.json",
+            "go.sum",
+            "go.work.sum",
+            "Package.resolved",
+            "bun.lockb",
+            "gradle.lockfile",
+        )
+        for name in lockfiles:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp:
+                repository = _create_repository(Path(temp))
+                path = repository / name
+                path.write_text("before\n", encoding="utf-8")
+                _git(repository, "add", name)
+                _git(repository, "commit", "-m", "add lockfile")
+                path.write_text("after\n", encoding="utf-8")
+
+                result = self.module.capture_git_snapshot(
+                    repository=repository,
+                    target_kind="working-tree",
+                )
+
+                entry = next(item for item in result.entries if item.path == name)
+                self.assertEqual(entry.material, "lockfile")
+                self.assertEqual(entry.coverage, "metadata-only")
+
+    def test_non_lock_manifests_remain_text(self):
+        for name in ("package.json", "go.mod"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp:
+                repository = _create_repository(Path(temp))
+                path = repository / name
+                path.write_text("before\n", encoding="utf-8")
+                _git(repository, "add", name)
+                _git(repository, "commit", "-m", "add manifest")
+                path.write_text("after\n", encoding="utf-8")
+
+                result = self.module.capture_git_snapshot(
+                    repository=repository,
+                    target_kind="working-tree",
+                )
+
+                entry = next(item for item in result.entries if item.path == name)
+                self.assertEqual(entry.material, "text")
 
     def test_ignored_material_is_excluded_unless_explicitly_scoped(self):
         with tempfile.TemporaryDirectory() as temp:

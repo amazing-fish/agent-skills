@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+import codecs
 import hashlib
 import json
 import os
 import subprocess
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterable
@@ -15,10 +17,16 @@ from typing import Iterable
 
 TARGET_KINDS = frozenset({"staged", "working-tree"})
 LOCKFILE_NAMES = frozenset({
+    "bun.lockb",
     "cargo.lock",
     "composer.lock",
     "gemfile.lock",
+    "go.sum",
+    "go.work.sum",
+    "gradle.lockfile",
+    "npm-shrinkwrap.json",
     "package-lock.json",
+    "package.resolved",
     "pipfile.lock",
     "pnpm-lock.yaml",
     "poetry.lock",
@@ -42,6 +50,7 @@ class SnapshotEntry:
 class GitSnapshot:
     schema_version: int
     target_kind: str
+    scope_paths: tuple[str, ...]
     base_sha: str
     head_sha: str
     snapshot_id: str
@@ -61,26 +70,64 @@ class GitSnapshot:
 
 
 @dataclass(frozen=True)
+class _UntrackedMaterial:
+    path: str
+    content_digest: str
+    content_bytes: int | None
+    changed_lines: int | None
+    is_text: bool | None
+    material_hint: str | None
+
+
+@dataclass(frozen=True)
 class _CapturedMaterial:
-    patch: bytes
+    patch_digest: str
+    patch_bytes: int
     name_status: tuple[tuple[str, str, str | None], ...]
     numstat: tuple[tuple[str, int | None], ...]
-    untracked: tuple[tuple[str, bytes], ...]
+    untracked: tuple[_UntrackedMaterial, ...]
     included_ignored_paths: tuple[str, ...]
     uncommitted_paths: tuple[str, ...]
 
 
-def _git(repository: Path, *args: str, check: bool = True) -> bytes:
-    completed = subprocess.run(
+def _run_git(repository: Path, *args: str) -> subprocess.CompletedProcess[bytes]:
+    return subprocess.run(
         ["git", "-C", str(repository), *args],
         check=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+
+
+def _git(repository: Path, *args: str, check: bool = True) -> bytes:
+    completed = _run_git(repository, *args)
     if check and completed.returncode != 0:
         message = completed.stderr.decode("utf-8", errors="replace").strip()
         raise RuntimeError(f"git {' '.join(args)} failed: {message}")
     return completed.stdout
+
+
+def _stream_git_digest(repository: Path, *args: str) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    byte_count = 0
+    with tempfile.TemporaryFile() as stderr:
+        process = subprocess.Popen(
+            ["git", "-C", str(repository), *args],
+            stdout=subprocess.PIPE,
+            stderr=stderr,
+        )
+        if process.stdout is None:
+            raise RuntimeError("git patch stream is unavailable")
+        with process.stdout:
+            while chunk := process.stdout.read(64 * 1024):
+                digest.update(chunk)
+                byte_count += len(chunk)
+        returncode = process.wait()
+        if returncode != 0:
+            stderr.seek(0)
+            message = stderr.read().decode("utf-8", errors="replace").strip()
+            raise RuntimeError(f"git {' '.join(args)} failed: {message}")
+    return digest.hexdigest(), byte_count
 
 
 def _decode_path(value: bytes) -> str:
@@ -136,45 +183,159 @@ def _parse_numstat(payload: bytes) -> tuple[tuple[str, int | None], ...]:
     return tuple(rows)
 
 
-def _diff_arguments(target_kind: str, base_sha: str, *options: str) -> list[str]:
-    args = ["diff", *options, "--find-renames"]
+def _literal_pathspecs(paths: tuple[str, ...]) -> list[str]:
+    return [f":(literal){path}" for path in paths]
+
+
+def _diff_arguments(
+    target_kind: str,
+    base_sha: str,
+    scope_paths: tuple[str, ...],
+    *options: str,
+) -> list[str]:
+    args = ["diff", *options, "--find-renames", "--find-copies-harder"]
     if target_kind == "staged":
         args.append("--cached")
-    args.extend([base_sha, "--"])
+    args.extend([base_sha, "--", *_literal_pathspecs(scope_paths)])
     return args
 
 
-def _uncommitted_arguments(target_kind: str, head_sha: str) -> list[str]:
-    args = ["diff", "--name-only", "-z", "--find-renames"]
+def _uncommitted_arguments(
+    target_kind: str,
+    head_sha: str,
+    scope_paths: tuple[str, ...],
+) -> list[str]:
+    args = ["diff", "--name-only", "-z", "--find-renames", "--find-copies-harder"]
     if target_kind == "staged":
         args.append("--cached")
-    args.extend([head_sha, "--"])
+    args.extend([head_sha, "--", *_literal_pathspecs(scope_paths)])
     return args
 
 
-def _read_untracked(repository: Path) -> tuple[tuple[str, bytes], ...]:
-    payload = _git(repository, "ls-files", "--others", "--exclude-standard", "-z")
-    items: list[tuple[str, bytes]] = []
+def _stream_file_material(path: Path) -> tuple[str, int, int | None, bool]:
+    digest = hashlib.sha256()
+    decoder = codecs.getincrementaldecoder("utf-8")()
+    is_text = True
+    byte_count = 0
+    newline_count = 0
+    last_byte = b""
+    with path.open("rb") as stream:
+        while chunk := stream.read(64 * 1024):
+            digest.update(chunk)
+            byte_count += len(chunk)
+            newline_count += chunk.count(b"\n")
+            last_byte = chunk[-1:]
+            if b"\0" in chunk:
+                is_text = False
+            if is_text:
+                try:
+                    decoder.decode(chunk)
+                except UnicodeDecodeError:
+                    is_text = False
+        if is_text:
+            try:
+                decoder.decode(b"", final=True)
+            except UnicodeDecodeError:
+                is_text = False
+    changed_lines = None
+    if is_text:
+        changed_lines = newline_count + (
+            1 if byte_count and last_byte != b"\n" else 0
+        )
+    return digest.hexdigest(), byte_count, changed_lines, is_text
+
+
+def _metadata_digest(path: str, absolute: Path, material: str) -> str:
+    stat = absolute.stat()
+    payload = f"{material}\0{path}\0{stat.st_size}\0{stat.st_mtime_ns}".encode(
+        "utf-8",
+        errors="surrogateescape",
+    )
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _capture_untracked_path(
+    repository: Path,
+    target_kind: str,
+    base_sha: str,
+    path: str,
+) -> _UntrackedMaterial:
+    absolute = repository / Path(path)
+    if absolute.is_symlink():
+        content = os.readlink(absolute).encode("utf-8", errors="surrogateescape")
+        is_text = _is_text(content)
+        return _UntrackedMaterial(
+            path=path,
+            content_digest=hashlib.sha256(content).hexdigest(),
+            content_bytes=len(content),
+            changed_lines=_line_count(content) if is_text else None,
+            is_text=is_text,
+            material_hint=None,
+        )
+    if absolute.is_dir():
+        return _UntrackedMaterial(
+            path=path,
+            content_digest=_metadata_digest(path, absolute, "untracked-directory"),
+            content_bytes=None,
+            changed_lines=None,
+            is_text=None,
+            material_hint="untracked-directory",
+        )
+    if not absolute.is_file():
+        raise RuntimeError(f"untracked path changed while capturing snapshot: {path}")
+    if _uses_lfs_filter(repository, target_kind, base_sha, path):
+        return _UntrackedMaterial(
+            path=path,
+            content_digest=_metadata_digest(path, absolute, "lfs-pointer"),
+            content_bytes=absolute.stat().st_size,
+            changed_lines=None,
+            is_text=None,
+            material_hint="lfs-pointer",
+        )
+    content_digest, content_bytes, changed_lines, is_text = _stream_file_material(
+        absolute
+    )
+    return _UntrackedMaterial(
+        path=path,
+        content_digest=content_digest,
+        content_bytes=content_bytes,
+        changed_lines=changed_lines,
+        is_text=is_text,
+        material_hint=None,
+    )
+
+
+def _read_untracked(
+    repository: Path,
+    target_kind: str,
+    base_sha: str,
+    scope_paths: tuple[str, ...],
+) -> tuple[_UntrackedMaterial, ...]:
+    payload = _git(
+        repository,
+        "ls-files",
+        "--others",
+        "--exclude-standard",
+        "-z",
+        "--",
+        *_literal_pathspecs(scope_paths),
+    )
+    items: list[_UntrackedMaterial] = []
     for raw_path in payload.split(b"\0"):
         if not raw_path:
             continue
         path = _decode_path(raw_path)
-        absolute = repository / Path(path)
-        if absolute.is_symlink():
-            data = os.readlink(absolute).encode("utf-8", errors="surrogateescape")
-        elif absolute.is_file():
-            data = absolute.read_bytes()
-        else:
-            raise RuntimeError(f"untracked path changed while capturing snapshot: {path}")
-        items.append((path, data))
-    return tuple(sorted(items))
+        items.append(_capture_untracked_path(repository, target_kind, base_sha, path))
+    return tuple(sorted(items, key=lambda item: item.path))
 
 
 def _read_explicit_ignored(
     repository: Path,
+    target_kind: str,
+    base_sha: str,
     paths: frozenset[str],
-) -> tuple[tuple[str, bytes], ...]:
-    items: list[tuple[str, bytes]] = []
+) -> tuple[_UntrackedMaterial, ...]:
+    items: list[_UntrackedMaterial] = []
     for path in sorted(paths):
         tracked = _git(repository, "ls-files", "-z", "--", path)
         if tracked:
@@ -189,13 +350,9 @@ def _read_explicit_ignored(
         if not ignored:
             raise ValueError(f"explicit ignored path is not ignored by Git: {path}")
         absolute = repository / Path(path)
-        if absolute.is_symlink():
-            data = os.readlink(absolute).encode("utf-8", errors="surrogateescape")
-        elif absolute.is_file():
-            data = absolute.read_bytes()
-        else:
+        if not absolute.is_symlink() and not absolute.is_file():
             raise ValueError(f"explicit ignored path is not a file: {path}")
-        items.append((path, data))
+        items.append(_capture_untracked_path(repository, target_kind, base_sha, path))
     return tuple(items)
 
 
@@ -205,12 +362,14 @@ def _capture_material(
     base_sha: str,
     head_sha: str,
     included_ignored_paths: frozenset[str],
+    scope_paths: tuple[str, ...],
 ) -> _CapturedMaterial:
-    patch = _git(
+    patch_digest, patch_bytes = _stream_git_digest(
         repository,
         *_diff_arguments(
             target_kind,
             base_sha,
+            scope_paths,
             "--binary",
             "--full-index",
             "--no-ext-diff",
@@ -220,35 +379,53 @@ def _capture_material(
     name_status = _parse_name_status(
         _git(
             repository,
-            *_diff_arguments(target_kind, base_sha, "--name-status", "-z"),
+            *_diff_arguments(
+                target_kind,
+                base_sha,
+                scope_paths,
+                "--name-status",
+                "-z",
+            ),
         )
     )
     numstat = _parse_numstat(
         _git(
             repository,
-            *_diff_arguments(target_kind, base_sha, "--numstat", "-z"),
+            *_diff_arguments(target_kind, base_sha, scope_paths, "--numstat", "-z"),
         )
     )
     untracked = ()
     if target_kind == "working-tree":
         untracked = tuple(sorted(
             (
-                *_read_untracked(repository),
-                *_read_explicit_ignored(repository, included_ignored_paths),
-            )
+                *_read_untracked(
+                    repository,
+                    target_kind,
+                    base_sha,
+                    scope_paths,
+                ),
+                *_read_explicit_ignored(
+                    repository,
+                    target_kind,
+                    base_sha,
+                    included_ignored_paths,
+                ),
+            ),
+            key=lambda item: item.path,
         ))
 
     uncommitted = {
         _decode_path(path)
         for path in _git(
             repository,
-            *_uncommitted_arguments(target_kind, head_sha),
+            *_uncommitted_arguments(target_kind, head_sha, scope_paths),
         ).split(b"\0")
         if path
     }
-    uncommitted.update(path for path, _ in untracked)
+    uncommitted.update(item.path for item in untracked)
     return _CapturedMaterial(
-        patch=patch,
+        patch_digest=patch_digest,
+        patch_bytes=patch_bytes,
         name_status=name_status,
         numstat=numstat,
         untracked=untracked,
@@ -264,6 +441,7 @@ def _fingerprint(
     head_sha: str,
     material: _CapturedMaterial,
     generated_paths: frozenset[str],
+    scope_paths: tuple[str, ...],
 ) -> str:
     digest = hashlib.sha256()
 
@@ -276,12 +454,19 @@ def _fingerprint(
         target_kind.encode("ascii"),
         base_sha.encode("ascii"),
         head_sha.encode("ascii"),
-        material.patch,
+        material.patch_digest.encode("ascii"),
+        str(material.patch_bytes).encode("ascii"),
     ):
         add(value)
-    for path, content in material.untracked:
+    for item in material.untracked:
+        add(item.path.encode("utf-8", errors="surrogateescape"))
+        add(item.content_digest.encode("ascii"))
+        add(str(item.content_bytes).encode("ascii"))
+        add(str(item.changed_lines).encode("ascii"))
+        add(str(item.material_hint).encode("ascii"))
+    for path in scope_paths:
+        add(b"scope")
         add(path.encode("utf-8", errors="surrogateescape"))
-        add(content)
     for path in material.included_ignored_paths:
         add(b"ignored")
         add(path.encode("utf-8", errors="surrogateescape"))
@@ -359,20 +544,24 @@ def _uses_lfs_filter(
     if target_kind == "staged":
         current_args.append("--cached")
     current_args.extend(["-z", "filter", "--", path])
-    current = _git(repository, *current_args, check=False)
-    base = _git(
-        repository,
+    base_args = [
         "check-attr",
         f"--source={base_sha}",
         "-z",
         "filter",
         "--",
         path,
-        check=False,
-    )
+    ]
+    payloads: list[bytes] = []
+    for args in (current_args, base_args):
+        completed = _run_git(repository, *args)
+        if completed.returncode != 0:
+            message = completed.stderr.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(f"git {' '.join(args)} failed: {message}")
+        payloads.append(completed.stdout)
     return any(
         tokens[-1] == b"lfs"
-        for payload in (current, base)
+        for payload in payloads
         if (tokens := [token for token in payload.split(b"\0") if token])
     )
 
@@ -387,6 +576,7 @@ def capture_git_snapshot(
     repository: str | Path,
     target_kind: str,
     base: str = "HEAD",
+    scope_paths: Iterable[str] = (),
     generated_paths: Iterable[str] = (),
     included_ignored_paths: Iterable[str] = (),
 ) -> GitSnapshot:
@@ -403,12 +593,24 @@ def capture_git_snapshot(
     base_sha = _git(root, "rev-parse", "--verify", f"{base}^{{commit}}").decode().strip()
     head_sha = _git(root, "rev-parse", "--verify", "HEAD^{commit}").decode().strip()
     generated = _normalize_paths(generated_paths, label="generated path")
+    scope = tuple(sorted(_normalize_paths(scope_paths, label="scope path")))
     included_ignored = _normalize_paths(
         included_ignored_paths,
         label="ignored path",
     )
     if normalized_target == "staged" and included_ignored:
         raise ValueError("staged target cannot include ignored worktree paths")
+    if scope:
+        outside_scope = [
+            path
+            for path in included_ignored
+            if not any(path == item or path.startswith(f"{item}/") for item in scope)
+        ]
+        if outside_scope:
+            raise ValueError(
+                "included ignored path is outside the requested scope: "
+                + ", ".join(sorted(outside_scope))
+            )
 
     first = _capture_material(
         root,
@@ -416,6 +618,7 @@ def capture_git_snapshot(
         base_sha,
         head_sha,
         included_ignored,
+        scope,
     )
     second = _capture_material(
         root,
@@ -423,24 +626,38 @@ def capture_git_snapshot(
         base_sha,
         head_sha,
         included_ignored,
+        scope,
     )
     if first != second:
         raise RuntimeError("local target changed while capturing snapshot; retry")
 
     target_paths = {path for _, path, _ in second.name_status}
-    target_paths.update(path for path, _ in second.untracked)
+    target_paths.update(item.path for item in second.untracked)
     generated = frozenset(generated.intersection(target_paths))
     stats = dict(second.numstat)
     uncommitted = frozenset(second.uncommitted_paths)
     entries: list[SnapshotEntry] = []
     metadata_only: list[str] = []
     unavailable_patches = 0
+    untracked_by_path = {item.path: item for item in second.untracked}
+    tracked_paths = {path for _, path, _ in second.name_status}
 
     for status, path, source_path in second.name_status:
-        content_bytes = _tracked_content_size(root, normalized_target, path)
+        replacement = untracked_by_path.get(path)
+        content_bytes = (
+            replacement.content_bytes
+            if replacement is not None
+            else _tracked_content_size(root, normalized_target, path)
+        )
         changed_lines = stats.get(path)
-        if status.startswith(("R", "C")):
+        if replacement is not None:
+            material = "untracked-replacement"
+            changed_lines = None
+        elif status.startswith("R"):
             material = "rename"
+            changed_lines = None
+        elif status.startswith("C"):
+            material = "copy"
             changed_lines = None
         elif _is_gitlink(root, base_sha, path):
             material = "submodule"
@@ -474,18 +691,20 @@ def capture_git_snapshot(
             )
         )
 
-    for path, content in second.untracked:
+    for item in second.untracked:
+        path = item.path
+        if path in tracked_paths:
+            continue
         is_generated = path in generated
-        is_text = _is_text(content)
-        if _uses_lfs_filter(root, normalized_target, base_sha, path):
-            material = "lfs-pointer"
+        if item.material_hint is not None:
+            material = item.material_hint
         elif _is_lockfile(path):
             material = "lockfile"
         else:
             material = "generated" if is_generated else (
-                "text" if is_text else "binary"
+                "text" if item.is_text else "binary"
             )
-        changed_lines = _line_count(content) if is_text else None
+        changed_lines = item.changed_lines
         omission_reason = None
         coverage = "local-lines"
         if material != "text":
@@ -499,7 +718,7 @@ def capture_git_snapshot(
                 status="!" if path in included_ignored else "?",
                 material=material,
                 changed_lines=changed_lines,
-                content_bytes=len(content),
+                content_bytes=item.content_bytes,
                 uncommitted=True,
                 coverage=coverage,
                 omission_reason=omission_reason,
@@ -508,8 +727,8 @@ def capture_git_snapshot(
 
     entries.sort(key=lambda item: item.path)
     changed_lines_total = sum(entry.changed_lines or 0 for entry in entries)
-    patch_bytes = len(second.patch) + sum(
-        len(content) for _, content in second.untracked
+    patch_bytes = second.patch_bytes + sum(
+        item.content_bytes or 0 for item in second.untracked
     )
     final = _capture_material(
         root,
@@ -517,6 +736,7 @@ def capture_git_snapshot(
         base_sha,
         head_sha,
         included_ignored,
+        scope,
     )
     if second != final:
         raise RuntimeError("local target changed while capturing snapshot; retry")
@@ -529,10 +749,12 @@ def capture_git_snapshot(
         head_sha=head_sha,
         material=second,
         generated_paths=generated,
+        scope_paths=scope,
     )
     return GitSnapshot(
         schema_version=1,
         target_kind=normalized_target,
+        scope_paths=scope,
         base_sha=base_sha,
         head_sha=head_sha,
         snapshot_id=snapshot_id,
@@ -562,6 +784,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-kind", required=True, choices=sorted(TARGET_KINDS))
     parser.add_argument("--base", default="HEAD")
     parser.add_argument(
+        "--path",
+        action="append",
+        default=[],
+        help="repository-relative file or directory scope; repeat as needed",
+    )
+    parser.add_argument(
         "--generated-path",
         action="append",
         default=[],
@@ -582,6 +810,7 @@ def main(argv: list[str] | None = None) -> int:
         repository=args.repository,
         target_kind=args.target_kind,
         base=args.base,
+        scope_paths=args.path,
         generated_paths=args.generated_path,
         included_ignored_paths=args.include_ignored_path,
     )
