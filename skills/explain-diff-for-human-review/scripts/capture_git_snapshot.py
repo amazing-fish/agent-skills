@@ -302,6 +302,19 @@ def _effective_relationship_scope(
     return tuple(sorted(effective))
 
 
+def _merge_worktree_modes(
+    final_raw: tuple[tuple[str, str, str | None, str, str], ...],
+    staged_mode_changes: tuple[tuple[str, str, str | None, str, str], ...],
+) -> dict[str, tuple[str, str]]:
+    modes = {
+        path: (old_mode, new_mode)
+        for _, path, _, old_mode, new_mode in final_raw
+    }
+    for _, path, _, old_mode, new_mode in staged_mode_changes:
+        modes.setdefault(path, (old_mode, new_mode))
+    return modes
+
+
 def _stream_file_material(path: Path) -> tuple[str, int, int | None, bool]:
     digest = hashlib.sha256()
     decoder = codecs.getincrementaldecoder("utf-8")()
@@ -538,14 +551,7 @@ def _capture_material(
             ),
         )
     )
-    modes_by_path = {
-        path: (old_mode, new_mode)
-        for _, path, _, old_mode, new_mode in all_raw
-    }
-    modes_by_path.update(
-        (path, (old_mode, new_mode))
-        for _, path, _, old_mode, new_mode in staged_mode_changes
-    )
+    modes_by_path = _merge_worktree_modes(all_raw, staged_mode_changes)
     tracked_modes = tuple(
         (path, *modes_by_path[path])
         for _, path, _ in name_status

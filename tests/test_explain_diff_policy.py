@@ -706,6 +706,23 @@ class GitSnapshotPolicyTests(unittest.TestCase):
                     self.assertEqual(result.entries[0].new_mode, "100755")
                     self.assertEqual(result.entries[0].coverage, "metadata-only")
 
+    def test_final_worktree_mode_wins_staged_mode_overlay(self):
+        final_raw = (
+            ("T", "tracked.txt", None, "100644", "120000"),
+            ("M", "content.txt", None, "100644", "100644"),
+        )
+        staged_modes = (
+            ("M", "tracked.txt", None, "100644", "100755"),
+            ("M", "content.txt", None, "100644", "100755"),
+            ("M", "index-only.txt", None, "100644", "100755"),
+        )
+
+        modes = self.module._merge_worktree_modes(final_raw, staged_modes)
+
+        self.assertEqual(modes["tracked.txt"], ("100644", "120000"))
+        self.assertEqual(modes["content.txt"], ("100644", "100644"))
+        self.assertEqual(modes["index-only.txt"], ("100644", "100755"))
+
     def test_pure_rename_is_one_metadata_only_entry(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))
