@@ -528,6 +528,21 @@ class GitSnapshotPolicyTests(unittest.TestCase):
             self.assertEqual(explicit.included_ignored_paths, ("ignored.txt",))
             self.assertEqual(explicit.entries[0].status, "!")
 
+    def test_tracked_path_cannot_be_readded_as_explicit_ignored_material(self):
+        with tempfile.TemporaryDirectory() as temp:
+            repository = _create_repository(Path(temp))
+            (repository / ".gitignore").write_text("*.txt\n", encoding="utf-8")
+            _git(repository, "add", ".gitignore")
+            _git(repository, "commit", "-m", "ignore text files")
+            (repository / "tracked.txt").write_text("modified\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "tracked"):
+                self.module.capture_git_snapshot(
+                    repository=repository,
+                    target_kind="working-tree",
+                    included_ignored_paths=("tracked.txt",),
+                )
+
     def test_cli_emits_machine_readable_snapshot_without_content(self):
         with tempfile.TemporaryDirectory() as temp:
             repository = _create_repository(Path(temp))

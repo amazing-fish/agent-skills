@@ -141,10 +141,12 @@ def _read_explicit_ignored(
 ) -> tuple[tuple[str, bytes], ...]:
     items: list[tuple[str, bytes]] = []
     for path in sorted(paths):
+        tracked = _git(repository, "ls-files", "-z", "--", path)
+        if tracked:
+            raise ValueError(f"explicit ignored path is tracked by Git: {path}")
         ignored = _git(
             repository,
             "check-ignore",
-            "--no-index",
             "--",
             path,
             check=False,
