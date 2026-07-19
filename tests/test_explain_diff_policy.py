@@ -1241,23 +1241,24 @@ class GitSnapshotPolicyTests(unittest.TestCase):
             self.assertNotIn(secret_marker, completed.stdout)
 
     def test_explicit_ignored_path_must_stay_repository_relative(self):
-        with tempfile.TemporaryDirectory() as temp:
-            repository = _create_repository(Path(temp))
+        with mock.patch.object(self.module.os, "name", "nt"):
             with self.assertRaisesRegex(ValueError, "repository-relative"):
-                self.module.capture_git_snapshot(
-                    repository=repository,
-                    target_kind="working-tree",
-                    included_ignored_paths=("C:/outside.txt",),
+                self.module._normalize_paths(
+                    ("C:/outside.txt",),
+                    label="ignored path",
                 )
 
     def test_posix_scope_preserves_literal_backslash(self):
         with mock.patch.object(self.module.os, "name", "posix"):
             normalized = self.module._normalize_paths(
-                (r"foo\bar",),
+                (r"foo\bar", "C:/outside.txt"),
                 label="scope path",
             )
 
-        self.assertEqual(normalized, frozenset({r"foo\bar"}))
+        self.assertEqual(
+            normalized,
+            frozenset({r"foo\bar", "C:/outside.txt"}),
+        )
         self.assertTrue(
             self.module._matches_path_or_descendant(r"foo\bar", normalized)
         )
