@@ -48,6 +48,15 @@ class DouyinVideoAnalysisPolicyTests(unittest.TestCase):
         self.assertIn("If a compatible parser exists", self.skill)
         self.assertNotIn("For this workspace, use", self.skill)
 
+    def test_example_writes_generated_artifacts_to_ignored_reports(self):
+        ignore_rules = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("**/reports/", ignore_rules)
+        self.assertIn(
+            "--out reports/douyin-video-analysis/<run-id>",
+            self.skill,
+        )
+        self.assertNotIn("--out outputs/", self.skill)
+
     def test_report_contract_is_learning_oriented(self):
         for required_section in (
             "## 1. Source Summary",

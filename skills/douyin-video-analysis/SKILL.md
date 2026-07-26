@@ -15,7 +15,7 @@ Turn a Douyin video link into an evidence-backed research report. Prefer parsed 
    - Extract the first URL from share text.
    - Record the original URL, resolved URL, redirect chain, status code, and crawl method.
    - If a compatible parser exists in the active workspace, prefer its documented CLI over ad hoc scraping. This Skill does not bundle a parser runtime. For a workspace that provides the `douyin_analyzer` package, a compatible example is:
-     `python -m douyin_analyzer.cli analyze "<share text or URL>" --out outputs/<run-id> --stt-backend auto`
+     `python -m douyin_analyzer.cli analyze "<share text or URL>" --out reports/douyin-video-analysis/<run-id> --stt-backend auto`
 
 2. **Collect evidence**
    - Extract page title, author, description, hashtags, captions, and video/media URLs.
