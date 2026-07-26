@@ -52,7 +52,7 @@ class DouyinVideoAnalysisPolicyTests(unittest.TestCase):
         ignore_rules = (ROOT / ".gitignore").read_text(encoding="utf-8")
         self.assertIn("**/reports/", ignore_rules)
         self.assertIn(
-            "--out reports/douyin-video-analysis/<run-id>",
+            '--out "reports/douyin-video-analysis/<run-id>"',
             self.skill,
         )
         self.assertNotIn("--out outputs/", self.skill)
