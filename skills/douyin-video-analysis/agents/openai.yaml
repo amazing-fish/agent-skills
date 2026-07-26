@@ -1,0 +1,4 @@
+interface:
+  display_name: "抖音视频分析"
+  short_description: "Analyze Douyin video links into evidence-backed reports"
+  default_prompt: "Use $douyin-video-analysis to analyze this Douyin video link into a source-grounded research report."
