@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import unittest
 
@@ -55,6 +56,33 @@ def _parse_routing_contract(workflow, optimizer, expected_ids):
             outcomes[cells[5].strip("`")],
             prompt_grants_authority,
         )
+
+    return observed
+
+
+def _review_timer_case_tuple(case):
+    return (
+        case["surface"],
+        case["evidence"],
+        case["schedule_basis"],
+        case["outcome"],
+    )
+
+
+def _parse_review_timer_contract(workflow, expected_ids):
+    observed = {}
+
+    for line in workflow.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if not cells or not cells[0].startswith("`"):
+            continue
+        case_id = cells[0].strip("`")
+        if case_id not in expected_ids:
+            continue
+        if len(cells) != 5:
+            raise ValueError(f"Unexpected review timer row shape for {case_id}")
+
+        observed[case_id] = tuple(cell.strip("`") for cell in cells[1:])
 
     return observed
 
@@ -162,6 +190,97 @@ class SkillPolicyTests(unittest.TestCase):
                     _parse_routing_contract(
                         mutated,
                         optimizer,
+                        expected_cases.keys(),
+                    ),
+                )
+
+    def test_review_timer_contract_spans_skill_and_fixture(self):
+        workflow = (
+            ROOT / "skills" / "execute-github-issue-pr-workflow" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        cases = json.loads(
+            (
+                ROOT / "tests" / "fixtures" / "review_timer_cases.json"
+            ).read_text(encoding="utf-8")
+        )
+        expected_cases = {
+            case["id"]: _review_timer_case_tuple(case) for case in cases
+        }
+
+        self.assertEqual(
+            expected_cases,
+            _parse_review_timer_contract(workflow, expected_cases.keys()),
+        )
+        for required_policy in (
+            "use a heartbeat attached to the current thread",
+            "derive `BYHOUR`, `BYMINUTE`, `BYSECOND`, and `BYDAY` from `target_at_utc` in UTC",
+            "Do not fall back to local wall-clock fields",
+            "differs from `target_at_utc` by at most 60 seconds",
+            "delete that exact timer immediately",
+            "target local time, target time zone, and verified next run",
+        ):
+            with self.subTest(required_policy=required_policy):
+                self.assertIn(required_policy, workflow)
+
+    def test_review_timer_converts_shanghai_target_before_building_rrule(self):
+        shanghai = timezone(timedelta(hours=8), name="Asia/Shanghai")
+        started_at = datetime(2026, 7, 27, 1, 32, 30, tzinfo=shanghai)
+        self.assertEqual("Asia/Shanghai", started_at.tzname())
+        target_at_utc = (
+            started_at.astimezone(timezone.utc) + timedelta(minutes=6)
+        )
+        self.assertEqual(
+            datetime.fromisoformat("2026-07-26T17:38:30+00:00"),
+            target_at_utc,
+        )
+
+        local_byhour_interpreted_as_utc = datetime.fromisoformat(
+            "2026-07-27T01:38:30+00:00"
+        )
+        self.assertEqual(
+            timedelta(hours=8),
+            local_byhour_interpreted_as_utc - target_at_utc,
+        )
+        self.assertGreater(
+            abs(
+                (
+                    local_byhour_interpreted_as_utc - target_at_utc
+                ).total_seconds()
+            ),
+            60,
+        )
+
+    def test_review_timer_contract_detects_unsafe_mutations(self):
+        workflow = (
+            ROOT / "skills" / "execute-github-issue-pr-workflow" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        cases = json.loads(
+            (
+                ROOT / "tests" / "fixtures" / "review_timer_cases.json"
+            ).read_text(encoding="utf-8")
+        )
+        expected_cases = {
+            case["id"]: _review_timer_case_tuple(case) for case in cases
+        }
+
+        mutations = (
+            (
+                "`target_at_utc` | `create_and_verify` |",
+                "`local_wall_time` | `create_and_verify` |",
+            ),
+            (
+                "`out_of_tolerance` | `none` | `cleanup_pending` |",
+                "`out_of_tolerance` | `none` | `create_and_verify` |",
+            ),
+        )
+        for original, replacement in mutations:
+            with self.subTest(replacement=replacement):
+                mutated = workflow.replace(original, replacement, 1)
+                self.assertNotEqual(workflow, mutated)
+                self.assertNotEqual(
+                    expected_cases,
+                    _parse_review_timer_contract(
+                        mutated,
                         expected_cases.keys(),
                     ),
                 )

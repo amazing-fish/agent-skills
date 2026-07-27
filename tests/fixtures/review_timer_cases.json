@@ -1,0 +1,44 @@
+[
+  {
+    "id": "native_relative_one_shot",
+    "surface": "relative_one_shot",
+    "evidence": "resolved_next_run",
+    "schedule_basis": "now_utc_plus_6m",
+    "outcome": "create_and_verify"
+  },
+  {
+    "id": "rrule_only_heartbeat",
+    "surface": "heartbeat_rrule_only",
+    "evidence": "resolved_or_persisted_first_occurrence",
+    "schedule_basis": "target_at_utc",
+    "outcome": "create_and_verify"
+  },
+  {
+    "id": "relative_schedule_rejected",
+    "surface": "dtstart_or_count_rejected",
+    "evidence": "none",
+    "schedule_basis": "target_at_utc",
+    "outcome": "try_utc_heartbeat"
+  },
+  {
+    "id": "utc_heartbeat_rejected",
+    "surface": "heartbeat_rrule_rejected",
+    "evidence": "none",
+    "schedule_basis": "none",
+    "outcome": "stop_pending"
+  },
+  {
+    "id": "next_run_out_of_tolerance",
+    "surface": "created_timer",
+    "evidence": "out_of_tolerance",
+    "schedule_basis": "none",
+    "outcome": "cleanup_pending"
+  },
+  {
+    "id": "next_run_unverifiable",
+    "surface": "created_timer",
+    "evidence": "unavailable",
+    "schedule_basis": "none",
+    "outcome": "cleanup_pending"
+  }
+]
