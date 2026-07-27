@@ -60,6 +60,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
             now=self.started_at,
             user_timezone="Asia/Shanghai",
             resolved_next_run=self.target_at_utc,
+            verification_time=self.now_utc,
         )
 
         self.assertEqual(
@@ -82,12 +83,12 @@ class ReviewTimerResolverTests(unittest.TestCase):
         for offset_seconds in (-60, 0, 60):
             with self.subTest(offset_seconds=offset_seconds):
                 decision = resolver.verify_resolved_next_run(
-                    now_utc=self.now_utc,
                     target_at_utc=self.target_at_utc,
                     resolved_next_run=(
                         self.target_at_utc
                         + timedelta(seconds=offset_seconds)
                     ),
+                    verification_time=self.now_utc,
                 )
                 self.assertEqual("accept", decision.decision)
 
@@ -101,12 +102,22 @@ class ReviewTimerResolverTests(unittest.TestCase):
         ):
             with self.subTest(reason=reason):
                 decision = resolver.verify_resolved_next_run(
-                    now_utc=self.now_utc,
                     target_at_utc=self.target_at_utc,
                     resolved_next_run=resolved_next_run,
+                    verification_time=self.now_utc,
                 )
                 self.assertEqual("cleanup", decision.decision)
                 self.assertEqual(reason, decision.reason)
+
+    def test_compares_future_run_to_verification_time(self):
+        decision = resolver.verify_resolved_next_run(
+            target_at_utc=self.target_at_utc,
+            resolved_next_run=self.target_at_utc,
+            verification_time=self.target_at_utc + timedelta(seconds=1),
+        )
+
+        self.assertEqual("cleanup", decision.decision)
+        self.assertEqual("not_in_future", decision.reason)
 
     def test_contract_cases_drive_next_run_decisions(self):
         cases = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
@@ -127,9 +138,9 @@ class ReviewTimerResolverTests(unittest.TestCase):
                 continue
             self.assertIn(case["outcome"], expected_by_outcome)
             decision = resolver.verify_resolved_next_run(
-                now_utc=self.now_utc,
                 target_at_utc=self.target_at_utc,
                 resolved_next_run=resolved_by_evidence[case["evidence"]],
+                verification_time=self.now_utc,
             )
             self.assertEqual(
                 expected_by_outcome[case["outcome"]],
@@ -151,6 +162,8 @@ class ReviewTimerResolverTests(unittest.TestCase):
                 self.started_at.isoformat(),
                 "--resolved-next-run",
                 self.target_at_utc.isoformat(),
+                "--verification-time",
+                self.now_utc.isoformat(),
             ],
             cwd=ROOT,
             capture_output=True,
@@ -166,6 +179,10 @@ class ReviewTimerResolverTests(unittest.TestCase):
         )
         self.assertEqual("SU", payload["rrule_fields"]["BYDAY"])
         self.assertEqual("accept", payload["next_run"]["decision"])
+        self.assertEqual(
+            self.now_utc.isoformat(),
+            payload["next_run"]["verified_at_utc"],
+        )
 
     def test_rejects_naive_datetimes(self):
         with self.assertRaisesRegex(ValueError, "now must include a timezone"):

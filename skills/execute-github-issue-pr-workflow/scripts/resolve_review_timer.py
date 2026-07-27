@@ -20,6 +20,7 @@ WEEKDAY_CODES = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
 class NextRunDecision:
     decision: str
     reason: str
+    verified_at_utc: datetime
     resolved_next_run_utc: datetime | None
     delta_seconds: float | None
 
@@ -61,11 +62,18 @@ def derive_utc_rrule_fields(target_at_utc: datetime) -> dict[str, int | str]:
 
 def verify_resolved_next_run(
     *,
-    now_utc: datetime,
     target_at_utc: datetime,
     resolved_next_run: datetime | None,
+    verification_time: datetime | None = None,
 ) -> NextRunDecision:
-    now = _require_aware(now_utc, "now_utc").astimezone(timezone.utc)
+    verified_at_utc = (
+        datetime.now(timezone.utc)
+        if verification_time is None
+        else _require_aware(
+            verification_time,
+            "verification_time",
+        ).astimezone(timezone.utc)
+    )
     target = _require_aware(
         target_at_utc,
         "target_at_utc",
@@ -75,6 +83,7 @@ def verify_resolved_next_run(
         return NextRunDecision(
             decision="cleanup",
             reason="unavailable",
+            verified_at_utc=verified_at_utc,
             resolved_next_run_utc=None,
             delta_seconds=None,
         )
@@ -84,10 +93,11 @@ def verify_resolved_next_run(
         "resolved_next_run",
     ).astimezone(timezone.utc)
     delta_seconds = abs((resolved - target).total_seconds())
-    if resolved <= now:
+    if resolved <= verified_at_utc:
         return NextRunDecision(
             decision="cleanup",
             reason="not_in_future",
+            verified_at_utc=verified_at_utc,
             resolved_next_run_utc=resolved,
             delta_seconds=delta_seconds,
         )
@@ -95,12 +105,14 @@ def verify_resolved_next_run(
         return NextRunDecision(
             decision="cleanup",
             reason="out_of_tolerance",
+            verified_at_utc=verified_at_utc,
             resolved_next_run_utc=resolved,
             delta_seconds=delta_seconds,
         )
     return NextRunDecision(
         decision="accept",
         reason="within_tolerance",
+        verified_at_utc=verified_at_utc,
         resolved_next_run_utc=resolved,
         delta_seconds=delta_seconds,
     )
@@ -111,6 +123,7 @@ def resolve_review_timer(
     now: datetime,
     user_timezone: str,
     resolved_next_run: datetime | None = None,
+    verification_time: datetime | None = None,
 ) -> ReviewTimerResolution:
     zone = ZoneInfo(user_timezone)
     now_utc = _require_aware(now, "now").astimezone(zone).astimezone(timezone.utc)
@@ -125,9 +138,9 @@ def resolve_review_timer(
         target_at_local=target_at_utc.astimezone(zone),
         rrule_fields=derive_utc_rrule_fields(target_at_utc),
         next_run=verify_resolved_next_run(
-            now_utc=now_utc,
             target_at_utc=target_at_utc,
             resolved_next_run=resolved_next_run,
+            verification_time=verification_time,
         ),
     )
 
@@ -151,6 +164,7 @@ def _to_payload(resolution: ReviewTimerResolution) -> dict[str, object]:
         "next_run": {
             "decision": resolution.next_run.decision,
             "reason": resolution.next_run.reason,
+            "verified_at_utc": resolution.next_run.verified_at_utc.isoformat(),
             "resolved_next_run_utc": (
                 resolution.next_run.resolved_next_run_utc.isoformat()
                 if resolution.next_run.resolved_next_run_utc is not None
@@ -172,6 +186,10 @@ def _parser() -> argparse.ArgumentParser:
         "--resolved-next-run",
         help="Timezone-aware ISO 8601 resolved next run; omit when unavailable",
     )
+    parser.add_argument(
+        "--verification-time",
+        help="Timezone-aware ISO 8601 verification time; defaults to the current UTC time",
+    )
     return parser
 
 
@@ -189,10 +207,16 @@ def main(argv: list[str] | None = None) -> int:
             if args.resolved_next_run
             else None
         )
+        verification_time = (
+            _parse_datetime(args.verification_time, "verification_time")
+            if args.verification_time
+            else None
+        )
         resolution = resolve_review_timer(
             now=now,
             user_timezone=args.user_timezone,
             resolved_next_run=resolved_next_run,
+            verification_time=verification_time,
         )
     except (TypeError, ValueError, ZoneInfoNotFoundError) as exc:
         print(f"invalid review timer input: {exc}", file=sys.stderr)
