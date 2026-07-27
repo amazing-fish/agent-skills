@@ -53,9 +53,29 @@ The optimizer's rewrite-only and separate-follow-up boundaries govern the standa
 
 ## Check Codex Review efficiently
 
+### Schedule the review timer safely
+
+Treat the 6-minute delay as an absolute instant, not as local wall-clock fields. Use this contract:
+
+| Case | Surface | Evidence | Schedule basis | Outcome |
+| --- | --- | --- | --- | --- |
+| `native_relative_one_shot` | `relative_one_shot` | `resolved_next_run` | `now_utc_plus_6m` | `create_and_verify` |
+| `rrule_only_heartbeat` | `heartbeat_rrule_only` | `resolved_or_persisted_first_occurrence` | `target_at_utc` | `create_and_verify` |
+| `relative_schedule_rejected` | `dtstart_or_count_rejected` | `none` | `target_at_utc` | `try_utc_heartbeat` |
+| `utc_heartbeat_rejected` | `heartbeat_rrule_rejected` | `none` | `none` | `stop_pending` |
+| `next_run_out_of_tolerance` | `created_timer` | `out_of_tolerance` | `none` | `cleanup_pending` |
+| `next_run_unverifiable` | `created_timer` | `unavailable` | `none` | `cleanup_pending` |
+
+1. Capture `now_utc`, then compute the exact `target_at_utc = now_utc + 6 minutes`. Prefer an environment-native relative one-shot wait. For Codex Desktop, use a heartbeat attached to the current thread; do not create a standalone cron automation for this follow-up.
+2. If the heartbeat surface accepts only an RRULE, derive `BYHOUR`, `BYMINUTE`, `BYSECOND`, and `BYDAY` from `target_at_utc` in UTC and ensure the first future occurrence identifies the intended instant. Never copy the user's local wall-clock fields into the RRULE. Use a timezone-aware conversion only to present the target in the user's time zone.
+3. Treat a rejected `DTSTART`, a relative `COUNT=1` rule with no future run, or any other native scheduling failure as a failure of that path. Do not fall back to local wall-clock fields. Try a UTC RRULE heartbeat only when its first occurrence can be verified; if that path is also rejected, report `Codex review pending`.
+4. After creating or updating the timer, read its resolved next run. If the surface does not expose that value, read equivalent persisted schedule evidence and independently resolve its first future occurrence. Accept it only when it is in the future and differs from `target_at_utc` by at most 60 seconds.
+5. If the next run is outside tolerance or cannot be verified, delete that exact timer immediately. If deletion fails, pause it and report its identifier and cleanup failure. Do not wait on or silently retain an invalid timer.
+6. When the timer fires, clean up its durable record before completing the refresh cycle. Also clean up an obsolete timer when the PR HEAD changes. Report the target local time, target time zone, and verified next run without exposing a raw RRULE unless the user asks for it.
+
 For each new ready-for-review PR HEAD:
 
-1. Record the PR URL and HEAD, then set exactly one **one-shot 6-minute timer**. Do not poll while it is active.
+1. Record the PR URL and HEAD, then set exactly one **one-shot 6-minute timer** under the contract above. Do not poll while it is active.
 2. When it fires, refresh the PR once. If HEAD differs from the recorded HEAD, discard this cycle and start one new timer. Otherwise read the Codex state or reactions on the PR body, review decisions including requested changes, conversation and inline comments, unresolved threads, checks, and mergeability.
 3. Classify that single refresh:
    - **Passed:** the repository's current Codex-bot 👍 on the PR is sufficient. Do not require a newly created reaction, commit review, `commit_id`, or SHA binding. This assumes the configured bot maintains current PR-level state after pushes; stop if it does not. Continue only if no actionable feedback or relevant failed check remains; document any explicit check waiver.
