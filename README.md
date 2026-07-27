@@ -81,6 +81,7 @@ skills/
 2. 本地修改必须通过 Issue 说明动机、验收标准和兼容性影响。
 3. 修改过的外部文件应在 PR 中明确标注变更，不覆盖来源记录。
 4. 合入前检查 frontmatter、链接、敏感信息和生成物。
+5. PR 合入前必须通过 GitHub Actions CI 强制执行的仓库策略测试（`python -m unittest discover -s tests`）。
 
 ## License
 
