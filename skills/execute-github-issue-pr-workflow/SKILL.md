@@ -49,7 +49,6 @@ The optimizer's rewrite-only and separate-follow-up boundaries govern the standa
 3. Commit and push focused changes. Immediately return a full clickable URL for every pushed commit: `https://github.com/<owner>/<repo>/commit/<sha>`.
 4. Open or update a concise PR with the linked Issue, purpose, changes, exclusions, risks, validation, and screenshots when useful.
 5. Immediately return the full clickable PR URL after creation or material update.
-6. Never merge a PR in the same assistant turn that created it. A timer or auto-merge setting cannot bypass this boundary.
 
 ## Check Codex Review efficiently
 
@@ -85,6 +84,8 @@ For each new ready-for-review PR HEAD:
 - Resolve threads only after the fix or rationale is verified. Re-check current comments, checks, conflicts, acceptance criteria, and docs before declaring readiness.
 
 ## Gate merge or staging
+
+Never merge a PR in the same assistant turn that created it. A timer or auto-merge setting cannot bypass this boundary.
 
 Require all of the following:
 
