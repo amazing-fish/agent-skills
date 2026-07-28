@@ -55,16 +55,9 @@ The optimizer's rewrite-only and separate-follow-up boundaries govern the standa
 
 ### Schedule the review timer safely
 
-Treat the 6-minute delay as an absolute instant, not as local wall-clock fields. Use this contract:
+Treat the 6-minute delay as an absolute instant, not as local wall-clock fields. Use [the review timer contract](references/review-timer-contract.json) as the normative state-machine data. It preserves the native relative schedule, verified UTC heartbeat fallback, pending stop, and fail-closed cleanup outcomes.
 
-| Case | Surface | Evidence | Schedule basis | Outcome |
-| --- | --- | --- | --- | --- |
-| `native_relative_one_shot` | `relative_one_shot` | `resolved_next_run` | `now_utc_plus_6m` | `create_and_verify` |
-| `rrule_only_heartbeat` | `heartbeat_rrule_only` | `resolved_or_persisted_first_occurrence` | `target_at_utc` | `create_and_verify` |
-| `relative_schedule_rejected` | `dtstart_or_count_rejected` | `none` | `target_at_utc` | `try_utc_heartbeat` |
-| `utc_heartbeat_rejected` | `heartbeat_rrule_rejected` | `none` | `none` | `stop_pending` |
-| `next_run_out_of_tolerance` | `created_timer` | `out_of_tolerance` | `none` | `cleanup_pending` |
-| `next_run_unverifiable` | `created_timer` | `unavailable` | `none` | `cleanup_pending` |
+If this Skill contains `scripts/resolve_review_timer.py`, prefer it to compute `target_at_utc`, derive the UTC RRULE fields, and verify the resolved next run. If the script is unavailable, apply the same calculations and contract directly.
 
 1. Capture `now_utc`, then compute the exact `target_at_utc = now_utc + 6 minutes`. Prefer an environment-native relative one-shot wait. For Codex Desktop, use a heartbeat attached to the current thread; do not create a standalone cron automation for this follow-up.
 2. If the heartbeat surface accepts only an RRULE, derive `BYHOUR`, `BYMINUTE`, `BYSECOND`, and `BYDAY` from `target_at_utc` in UTC and ensure the first future occurrence identifies the intended instant. Never copy the user's local wall-clock fields into the RRULE. Use a timezone-aware conversion only to present the target in the user's time zone.
