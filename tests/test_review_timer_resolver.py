@@ -270,6 +270,50 @@ class ReviewTimerResolverTests(unittest.TestCase):
             observed_offsets,
         )
 
+    def test_crosses_london_fall_back_on_the_absolute_timeline(self):
+        started_at = datetime(
+            2026,
+            10,
+            25,
+            0,
+            58,
+            tzinfo=timezone.utc,
+        ).astimezone(ZoneInfo("Europe/London"))
+        expected_target_at_utc = datetime(
+            2026,
+            10,
+            25,
+            1,
+            4,
+            tzinfo=timezone.utc,
+        )
+
+        resolution = resolver.resolve_review_timer(
+            now=started_at,
+            user_timezone="Europe/London",
+            resolved_next_run=expected_target_at_utc,
+            verification_time=started_at.astimezone(timezone.utc),
+        )
+
+        self.assertEqual(timedelta(hours=1), started_at.utcoffset())
+        self.assertEqual(expected_target_at_utc, resolution.target_at_utc)
+        self.assertEqual(
+            timedelta(minutes=6),
+            resolution.target_at_utc - started_at.astimezone(timezone.utc),
+        )
+        self.assertEqual(timedelta(0), resolution.target_at_local.utcoffset())
+        self.assertEqual(1, resolution.target_at_local.fold)
+        self.assertEqual(
+            {
+                "BYHOUR": 1,
+                "BYMINUTE": 4,
+                "BYSECOND": 0,
+                "BYDAY": "SU",
+            },
+            resolution.rrule_fields,
+        )
+        self.assertEqual("accept", resolution.next_run.decision)
+
     def test_cli_emits_machine_readable_zoneinfo_resolution(self):
         completed = subprocess.run(
             [
