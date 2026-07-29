@@ -239,6 +239,7 @@ class SkillPolicyTests(unittest.TestCase):
             "If this Skill contains `scripts/resolve_review_timer.py`, prefer it",
             "use a heartbeat attached to the current thread",
             "derive `BYHOUR`, `BYMINUTE`, `BYSECOND`, and `BYDAY` from `target_at_utc` in UTC",
+            "Never copy the user's local wall-clock fields into the RRULE.",
             "Do not fall back to local wall-clock fields",
             "differs from `target_at_utc` by at most 60 seconds",
             "delete that exact timer immediately",
