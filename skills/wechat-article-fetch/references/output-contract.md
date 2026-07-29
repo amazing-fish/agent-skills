@@ -106,3 +106,7 @@ warnings: []
 A normal call is a cache hit only when both `raw.html` and `article.md` exist. The parser reuses `raw.html`, emits `cached: true`, and performs no article network request. `--refresh` bypasses the cache.
 
 If `--assets` is added to a cache that does not already contain the requested images, image downloads may still make network requests. Image failures do not fail the article; they remain remote Markdown URLs and add strings to `warnings`.
+
+A successful article refresh invalidates the existing `assets/` directory before publishing the new `raw.html`, even when `--assets` is omitted. This prevents ordinal filenames from being reused for changed or reordered image URLs.
+
+Deletion, verification, rate-limit, and expired-link markers are evaluated only when the expected article body is missing or empty, or when the HTML cannot be parsed. Marker phrases inside a non-empty `div#js_content` are article text, not error-page evidence.

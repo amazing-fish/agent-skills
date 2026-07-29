@@ -8,6 +8,7 @@ import html as html_lib
 import json
 import os
 import re
+import shutil
 import sys
 import time
 from dataclasses import dataclass
@@ -315,20 +316,22 @@ def _normalize_image_url(value: str) -> str:
 
 
 def parse_article(raw_html: bytes) -> Article:
-    detect_page_error(raw_html)
     source = raw_html.decode("utf-8", errors="replace")
     try:
         document = lxml_html.fromstring(raw_html)
     except (etree.ParserError, ValueError) as exc:
+        detect_page_error(raw_html)
         raise FetchError("PARSE_FAILED", f"Could not parse article HTML: {exc}") from exc
 
     contents = document.xpath("//div[@id='js_content']")
     if not contents:
+        detect_page_error(raw_html)
         raise FetchError("EMPTY_CONTENT", "No div#js_content article body was found.")
     content = contents[0]
     visible_text = content.text_content()
     char_count = len(re.sub(r"\s+", "", visible_text))
     if char_count == 0:
+        detect_page_error(raw_html)
         raise FetchError("EMPTY_CONTENT", "The div#js_content article body is empty.")
 
     title = _meta_content(document, "og:title")
@@ -619,6 +622,16 @@ def atomic_write_text(path: Path, text: str) -> None:
     atomic_write_bytes(path, text.encode("utf-8"))
 
 
+def invalidate_asset_cache(output_dir: Path) -> None:
+    assets_dir = output_dir / "assets"
+    if not os.path.lexists(assets_dir):
+        return
+    if assets_dir.is_symlink() or not assets_dir.is_dir():
+        assets_dir.unlink()
+        return
+    shutil.rmtree(assets_dir)
+
+
 def download_assets(
     session: requests.Session,
     image_urls: list[str],
@@ -759,9 +772,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     article = parse_article(raw_html)
     if not cache_hit:
         try:
+            invalidate_asset_cache(output_dir)
             atomic_write_bytes(raw_html_path, raw_html)
         except OSError as exc:
-            raise FetchError("PARSE_FAILED", f"Could not write raw HTML: {exc}") from exc
+            raise FetchError(
+                "PARSE_FAILED",
+                f"Could not publish refreshed article cache: {exc}",
+            ) from exc
 
     assets_dir: Path | None = None
     asset_map: dict[str, str] = {}

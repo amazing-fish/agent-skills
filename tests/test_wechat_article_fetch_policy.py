@@ -1,10 +1,51 @@
 import ast
+import importlib.util
 from pathlib import Path
+import sys
+import tempfile
+import types
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL_ROOT = ROOT / "skills" / "wechat-article-fetch"
+
+
+def _load_fetch_module():
+    requests_stub = types.ModuleType("requests")
+    requests_stub.Session = type("Session", (), {})
+    requests_stub.Response = type("Response", (), {})
+    requests_stub.RequestException = type("RequestException", (Exception,), {})
+
+    etree_stub = types.ModuleType("lxml.etree")
+    etree_stub.ParserError = type("ParserError", (Exception,), {})
+    html_stub = types.ModuleType("lxml.html")
+    lxml_stub = types.ModuleType("lxml")
+    lxml_stub.etree = etree_stub
+    lxml_stub.html = html_stub
+
+    module_name = "_wechat_article_fetch_policy_target"
+    script_path = SKILL_ROOT / "scripts" / "fetch_mp_article.py"
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    module = importlib.util.module_from_spec(spec)
+    previous_bytecode_setting = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        with mock.patch.dict(
+            sys.modules,
+            {
+                module_name: module,
+                "requests": requests_stub,
+                "lxml": lxml_stub,
+                "lxml.etree": etree_stub,
+                "lxml.html": html_stub,
+            },
+        ):
+            spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = previous_bytecode_setting
+    return module
 
 
 class WechatArticleFetchPolicyTests(unittest.TestCase):
@@ -80,6 +121,53 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         self.assertTrue(disallowed.isdisjoint(imports))
         self.assertNotIn("shell=True", self.script)
 
+    def test_refresh_invalidation_removes_stale_assets(self):
+        module = _load_fetch_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            output_dir = Path(temporary)
+            assets_dir = output_dir / "assets"
+            assets_dir.mkdir()
+            (assets_dir / "001.png").write_bytes(b"stale")
+
+            module.invalidate_asset_cache(output_dir)
+
+            self.assertFalse(assets_dir.exists())
+            module.invalidate_asset_cache(output_dir)
+
+        self.assertIn("invalidate_asset_cache(output_dir)", self.script)
+
+    def test_error_markers_are_scoped_to_missing_or_invalid_content(self):
+        tree = ast.parse(self.script)
+        parse_article = next(
+            node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "parse_article"
+        )
+        parents = {
+            child: parent
+            for parent in ast.walk(parse_article)
+            for child in ast.iter_child_nodes(parent)
+        }
+        marker_calls = [
+            node
+            for node in ast.walk(parse_article)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "detect_page_error"
+        ]
+
+        self.assertEqual(3, len(marker_calls))
+        for call in marker_calls:
+            with self.subTest(line=call.lineno):
+                ancestor = parents[call]
+                is_scoped = False
+                while ancestor is not parse_article:
+                    if isinstance(ancestor, (ast.If, ast.ExceptHandler)):
+                        is_scoped = True
+                        break
+                    ancestor = parents[ancestor]
+                self.assertTrue(is_scoped)
+
     def test_network_cache_and_provenance_contracts_remain_explicit(self):
         for required_script_contract in (
             "TIMEOUT_SECONDS = 30",
@@ -98,6 +186,8 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "source_url",
             "Stdout contains exactly one UTF-8 JSON object",
             "performs no article network request",
+            "refresh invalidates the existing `assets/` directory",
+            "Marker phrases inside a non-empty `div#js_content` are article text",
         ):
             with self.subTest(required_output_contract=required_output_contract):
                 self.assertIn(required_output_contract, self.contract)
