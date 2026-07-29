@@ -32,6 +32,32 @@ UNSCHEDULED_SURFACES = {
     "heartbeat_rrule_rejected",
     "created_timer",
 }
+EXPECTED_SCHEDULE_BY_CASE = {
+    "native_relative_one_shot": (
+        "relative_one_shot",
+        "now_utc_plus_6m",
+    ),
+    "rrule_only_heartbeat": (
+        "heartbeat_rrule_only",
+        "target_at_utc",
+    ),
+    "relative_schedule_rejected": (
+        "dtstart_or_count_rejected",
+        "target_at_utc",
+    ),
+    "utc_heartbeat_rejected": (
+        "heartbeat_rrule_rejected",
+        "none",
+    ),
+    "next_run_out_of_tolerance": (
+        "created_timer",
+        "none",
+    ),
+    "next_run_unverifiable": (
+        "created_timer",
+        "none",
+    ),
+}
 
 
 def _load_resolver():
@@ -185,9 +211,17 @@ class ReviewTimerResolverTests(unittest.TestCase):
             controlled_surfaces,
             {case["surface"] for case in cases},
         )
+        self.assertEqual(
+            set(EXPECTED_SCHEDULE_BY_CASE),
+            {case["id"] for case in cases},
+        )
 
         for case in cases:
             with self.subTest(case_id=case["id"]):
+                self.assertEqual(
+                    EXPECTED_SCHEDULE_BY_CASE[case["id"]],
+                    (case["surface"], case["schedule_basis"]),
+                )
                 self.assertIn(case["surface"], controlled_surfaces)
                 scheduled_at = _scheduled_at_from_contract_basis(
                     case["schedule_basis"],
