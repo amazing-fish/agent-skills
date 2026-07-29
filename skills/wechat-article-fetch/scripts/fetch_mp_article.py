@@ -12,11 +12,10 @@ import shutil
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
-from zoneinfo import ZoneInfo
 
 import requests
 from lxml import etree
@@ -30,6 +29,7 @@ USER_AGENT = (
 )
 TIMEOUT_SECONDS = 30
 RETRY_DELAYS = (1, 2, 4)
+CHINA_STANDARD_TIME = timezone(timedelta(hours=8), name="Asia/Shanghai")
 SN_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,160}\Z")
 ERROR_CODES = {
     "NOT_MP_URL",
@@ -362,7 +362,7 @@ def parse_article(raw_html: bytes) -> Article:
     try:
         publish_time = datetime.fromtimestamp(
             int(timestamp),
-            tz=ZoneInfo("Asia/Shanghai"),
+            tz=CHINA_STANDARD_TIME,
         ).isoformat(timespec="seconds")
     except (OSError, OverflowError, ValueError) as exc:
         raise FetchError("PARSE_FAILED", f"Invalid publish timestamp: {timestamp}.") from exc
@@ -397,7 +397,11 @@ def _tag_name(node: Any) -> str:
 def _plain_text(value: str | None) -> str:
     if not value:
         return ""
-    return re.sub(r"\s+", " ", value.replace("\xa0", " "))
+    normalized = re.sub(r"\s+", " ", value.replace("\xa0", " "))
+    escaped = normalized.replace("\\", "\\\\")
+    escaped = re.sub(r"([`*_\[\]<>#])", r"\\\1", escaped)
+    escaped = re.sub(r"^(\s*)([-+])(?=\s)", r"\1\\\2", escaped)
+    return re.sub(r"^(\s*)(\d+)([.)])(?=\s)", r"\1\2\\\3", escaped)
 
 
 class MarkdownConverter:
@@ -468,7 +472,7 @@ class MarkdownConverter:
         if not source:
             return ""
         target = self.asset_map.get(source, source)
-        alt = _plain_text(str(node.get("alt") or "")).strip().replace("]", r"\]")
+        alt = _plain_text(str(node.get("alt") or "")).strip()
         return f"\n\n![{alt}]({target})\n\n"
 
     def _render_pre(self, node: Any) -> str:

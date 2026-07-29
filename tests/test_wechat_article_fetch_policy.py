@@ -1,4 +1,5 @@
 import ast
+from datetime import timedelta
 import importlib.util
 from pathlib import Path
 import sys
@@ -168,6 +169,45 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
                     ancestor = parents[ancestor]
                 self.assertTrue(is_scoped)
 
+    def test_publish_time_uses_windows_safe_fixed_china_offset(self):
+        module = _load_fetch_module()
+
+        self.assertEqual(timedelta(hours=8), module.CHINA_STANDARD_TIME.utcoffset(None))
+        rendered = module.datetime.fromtimestamp(
+            1785311401,
+            tz=module.CHINA_STANDARD_TIME,
+        ).isoformat(timespec="seconds")
+        self.assertTrue(rendered.endswith("+08:00"))
+        self.assertNotIn("ZoneInfo", self.script)
+
+    def test_plain_text_escapes_markdown_without_escaping_converter_markup(self):
+        module = _load_fetch_module()
+
+        for source, expected in (
+            ("# literal", r"\# literal"),
+            ("1. version", r"1\. version"),
+            ("> quoted", r"\> quoted"),
+            ("*stars* and [brackets]", r"\*stars\* and \[brackets\]"),
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(expected, module._plain_text(source))
+
+        class Node:
+            def __init__(self, tag, text):
+                self.tag = tag
+                self.text = text
+                self.tail = None
+
+            def __iter__(self):
+                return iter(())
+
+        converter = module.MarkdownConverter({})
+        self.assertEqual("**bold**", converter._render_node(Node("strong", "bold")))
+        self.assertEqual(
+            "\n\n# \\# literal\n\n",
+            converter._render_node(Node("h1", "# literal")),
+        )
+
     def test_network_cache_and_provenance_contracts_remain_explicit(self):
         for required_script_contract in (
             "TIMEOUT_SECONDS = 30",
@@ -188,6 +228,8 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "performs no article network request",
             "refresh invalidates the existing `assets/` directory",
             "Marker phrases inside a non-empty `div#js_content` are article text",
+            "stock Windows Python does not need an external IANA timezone database",
+            "Plain article text escapes Markdown control syntax",
         ):
             with self.subTest(required_output_contract=required_output_contract):
                 self.assertIn(required_output_contract, self.contract)

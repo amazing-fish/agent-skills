@@ -6,7 +6,7 @@
 python scripts/fetch_mp_article.py <url> [--assets] [--refresh] [--out <dir>]
 ```
 
-The script requires Python 3.12, `requests`, and `lxml`. It introduces no other third-party dependencies and does not use a browser.
+The script requires Python 3.12, `requests`, and `lxml`. It introduces no other third-party dependencies and does not use a browser. Publish times use a fixed UTC+08:00 offset, so stock Windows Python does not need an external IANA timezone database.
 
 ## Storage
 
@@ -110,3 +110,5 @@ If `--assets` is added to a cache that does not already contain the requested im
 A successful article refresh invalidates the existing `assets/` directory before publishing the new `raw.html`, even when `--assets` is omitted. This prevents ordinal filenames from being reused for changed or reordered image URLs.
 
 Deletion, verification, rate-limit, and expired-link markers are evaluated only when the expected article body is missing or empty, or when the HTML cannot be parsed. Marker phrases inside a non-empty `div#js_content` are article text, not error-page evidence.
+
+Plain article text escapes Markdown control syntax before structural Markdown is emitted. Literal text such as `# heading`, `1. item`, or `> quote` therefore remains text instead of becoming a heading, list, or blockquote; converter-generated headings, lists, links, and emphasis retain their intended structure.
