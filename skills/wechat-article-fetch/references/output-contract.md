@@ -16,7 +16,7 @@ The default output directory is:
 %LOCALAPPDATA%\mp-article-cache\<sn>\
 ```
 
-`sn` is the final path segment for short links such as `/s/<sn>`, or the `sn` query value for `/s?__biz=...&sn=<sn>`.
+Only HTTPS article URLs on `mp.weixin.qq.com` are accepted. URL credentials and ports other than 443 are rejected. `sn` is the final path segment for short links such as `/s/<sn>`, or the `sn` query value for `/s?__biz=...&sn=<sn>`.
 
 Successful output contains:
 
@@ -30,7 +30,7 @@ The script rejects an explicit `--out` inside the current working directory or a
 
 ## Stdout
 
-Stdout contains exactly one UTF-8 JSON object and a trailing newline. Diagnostics belong on stderr.
+Stdout contains exactly one UTF-8 JSON object and a trailing newline. It is written as UTF-8 bytes through the binary stdout stream so Windows legacy text encodings cannot corrupt or reject metadata. Diagnostics belong on stderr.
 
 Success schema:
 
@@ -107,9 +107,13 @@ warnings: []
 
 A normal call is a cache hit only when both `raw.html` and `article.md` exist. The parser reuses `raw.html`, emits `cached: true`, and performs no article network request. `--refresh` bypasses the cache.
 
+Article requests use the same fail-closed destination policy on the initial URL and every redirect target: HTTPS on port 443, no URL credentials, the exact trusted host `mp.weixin.qq.com`, and no private, loopback, link-local, reserved, or otherwise non-public DNS results. Redirects are followed manually, with a maximum of five. The documented Windows tunnel-adapter exception for synthetic `198.18.0.0/15` addresses applies only to the exact trusted hostname and retains HTTPS certificate verification.
+
+Article response bodies are streamed in 64 KiB chunks with a 30-second read deadline and a 10 MiB decoded-body limit, including when `Content-Length` is absent or incorrect. A larger response fails with `NETWORK` before `raw.html` is published.
+
 If `--assets` is added to a cache that does not already contain the requested images, image downloads may still make network requests. Each request must use a public HTTPS destination on port 443 with no URL credentials and the trusted WeChat CDN host `mmbiz.qpic.cn`. DNS results are rejected if any resolved address is loopback, private, link-local, reserved, or otherwise non-public. The `198.18.0.0/15` network-benchmark range is accepted only for that exact trusted hostname because Windows tunnel adapters commonly expose public destinations through synthetic addresses in this range; HTTPS certificate verification still binds the connection to the CDN hostname. Automatic redirects are disabled, and every redirect target is resolved and validated under the same policy before the next request. At most five redirects are followed.
 
-Image bodies are streamed in bounded chunks and limited to 20 MiB per response, including when `Content-Length` is absent or incorrect. Image failures do not fail the article; they remain remote Markdown URLs and add strings to `warnings`. An HTTP 200 response with a known non-image `Content-Type` is an image failure and is never cached as an asset. An empty image payload is an image failure under the same rule. An oversized payload is also rejected without writing a partial asset.
+Image bodies use the same 30-second read deadline, are streamed in bounded chunks, and are limited to 20 MiB per response, including when `Content-Length` is absent or incorrect. Image failures do not fail the article; they remain remote Markdown URLs and add strings to `warnings`. An HTTP 200 response with a known non-image `Content-Type` is an image failure and is never cached as an asset. An empty image payload is an image failure under the same rule. An oversized payload is also rejected without writing a partial asset.
 
 A successful article refresh invalidates the existing `assets/` directory before publishing the new `raw.html`, even when `--assets` is omitted. This prevents ordinal filenames from being reused for changed or reordered image URLs.
 

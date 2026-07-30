@@ -1,6 +1,8 @@
 import ast
 from datetime import timedelta
 import importlib.util
+import io
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -717,6 +719,122 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             rendered,
         )
 
+    def test_article_fetch_requires_https_and_revalidates_redirects(self):
+        module = _load_fetch_module()
+
+        with self.assertRaises(module.FetchError) as rejected:
+            module.parse_sn("http://mp.weixin.qq.com/s/example")
+        self.assertEqual("NOT_MP_URL", rejected.exception.code)
+
+        class Response:
+            status_code = 302
+            headers = {"Location": "https://mp.weixin.qq.com/s/redirected"}
+
+            def close(self):
+                self.closed = True
+
+        class Session:
+            def __init__(self):
+                self.calls = []
+                self.response = Response()
+
+            def get(self, *args, **kwargs):
+                self.calls.append((args, kwargs))
+                return self.response
+
+        resolved_addresses = iter(("93.184.216.34", "169.254.169.254"))
+
+        def resolve(hostname, port, *, type):
+            self.assertEqual("mp.weixin.qq.com", hostname)
+            return [
+                (
+                    module.socket.AF_INET,
+                    module.socket.SOCK_STREAM,
+                    6,
+                    "",
+                    (next(resolved_addresses), port),
+                )
+            ]
+
+        session = Session()
+        with (
+            mock.patch.object(module.socket, "getaddrinfo", side_effect=resolve),
+            self.assertRaises(module.FetchError) as redirected,
+        ):
+            module.fetch_html(
+                session,
+                "https://mp.weixin.qq.com/s/example",
+            )
+
+        self.assertEqual("NETWORK", redirected.exception.code)
+        self.assertIn("non-public article destination", redirected.exception.message)
+        self.assertEqual(1, len(session.calls))
+        self.assertTrue(session.calls[0][1]["stream"])
+        self.assertFalse(session.calls[0][1]["allow_redirects"])
+        self.assertTrue(session.response.closed)
+
+    def test_oversized_streaming_article_is_rejected(self):
+        module = _load_fetch_module()
+
+        class Response:
+            status_code = 200
+            headers = {"Content-Type": "text/html"}
+
+            def iter_content(self, *, chunk_size):
+                self.chunk_size = chunk_size
+                return iter((b"12345678", b"9"))
+
+            def close(self):
+                self.closed = True
+
+        class Session:
+            def __init__(self):
+                self.calls = []
+                self.response = Response()
+
+            def get(self, *args, **kwargs):
+                self.calls.append((args, kwargs))
+                return self.response
+
+        with (
+            mock.patch.object(module, "_validate_public_article_url"),
+            mock.patch.object(module, "MAX_ARTICLE_BYTES", 8),
+        ):
+            session = Session()
+            with self.assertRaises(module.FetchError) as oversized:
+                module.fetch_html(
+                    session,
+                    "https://mp.weixin.qq.com/s/example",
+                )
+
+        self.assertEqual("NETWORK", oversized.exception.code)
+        self.assertIn("8-byte limit", oversized.exception.message)
+        self.assertEqual(module.ARTICLE_CHUNK_BYTES, session.response.chunk_size)
+        self.assertTrue(session.response.closed)
+
+    def test_emit_json_uses_utf8_bytes_with_legacy_text_encoding(self):
+        module = _load_fetch_module()
+
+        class LegacyStdout:
+            encoding = "cp1252"
+
+            def __init__(self):
+                self.buffer = io.BytesIO()
+
+            def write(self, value):
+                raise AssertionError("emit_json must bypass the legacy text encoding")
+
+        stdout = LegacyStdout()
+        with mock.patch.object(module.sys, "stdout", stdout):
+            module.emit_json({"title": "中文😀"})
+
+        encoded = stdout.buffer.getvalue()
+        self.assertTrue(encoded.endswith(b"\n"))
+        self.assertEqual(
+            {"title": "中文😀"},
+            json.loads(encoded.decode("utf-8")),
+        )
+
     def test_non_image_200_response_is_not_cached_as_asset(self):
         module = _load_fetch_module()
 
@@ -903,6 +1021,9 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         for required_script_contract in (
             "TIMEOUT_SECONDS = 30",
             "RETRY_DELAYS = (1, 2, 4)",
+            "MAX_ARTICLE_BYTES = 10 * 1024 * 1024",
+            "MAX_ARTICLE_REDIRECTS = 5",
+            'TRUSTED_ARTICLE_HOSTS = frozenset({"mp.weixin.qq.com"})',
             "MAX_ASSET_BYTES = 20 * 1024 * 1024",
             "MAX_ASSET_REDIRECTS = 5",
             'TRUSTED_ASSET_HOSTS = frozenset({"mmbiz.qpic.cn"})',
@@ -919,7 +1040,11 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "%LOCALAPPDATA%\\mp-article-cache\\<sn>\\",
             "source_url",
             "Stdout contains exactly one UTF-8 JSON object",
+            "written as UTF-8 bytes",
             "performs no article network request",
+            "Only HTTPS article URLs",
+            "Article response bodies are streamed",
+            "10 MiB",
             "refresh invalidates the existing `assets/` directory",
             "Marker phrases inside a non-empty `div#js_content` are article text",
             "stock Windows Python does not need an external IANA timezone database",

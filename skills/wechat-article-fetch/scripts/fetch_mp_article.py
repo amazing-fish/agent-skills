@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, unquote, urljoin, urlsplit
 
 import requests
@@ -31,11 +31,16 @@ USER_AGENT = (
 )
 TIMEOUT_SECONDS = 30
 RETRY_DELAYS = (1, 2, 4)
+MAX_ARTICLE_BYTES = 10 * 1024 * 1024
+ARTICLE_CHUNK_BYTES = 64 * 1024
+MAX_ARTICLE_REDIRECTS = 5
+TRUSTED_ARTICLE_HOSTS = frozenset({"mp.weixin.qq.com"})
 MAX_ASSET_BYTES = 20 * 1024 * 1024
 ASSET_CHUNK_BYTES = 64 * 1024
 MAX_ASSET_REDIRECTS = 5
 TRUSTED_ASSET_HOSTS = frozenset({"mmbiz.qpic.cn"})
 TUNNEL_FAKE_IP_RANGE = ipaddress.ip_network("198.18.0.0/15")
+REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 CHINA_STANDARD_TIME = timezone(timedelta(hours=8), name="Asia/Shanghai")
 MAX_TABLE_COLUMNS = 128
 SN_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,160}\Z")
@@ -115,13 +120,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def parse_sn(url: str) -> str:
     try:
         parsed = urlsplit(url)
+        port = parsed.port
     except ValueError as exc:
         raise FetchError("NOT_MP_URL", f"Invalid URL: {exc}") from exc
 
-    if parsed.scheme not in {"http", "https"} or parsed.hostname != "mp.weixin.qq.com":
+    if (
+        parsed.scheme.lower() != "https"
+        or parsed.hostname != "mp.weixin.qq.com"
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in {None, 443}
+    ):
         raise FetchError(
             "NOT_MP_URL",
-            "Expected an http(s) URL on mp.weixin.qq.com.",
+            "Expected an HTTPS URL on mp.weixin.qq.com without credentials.",
         )
 
     path = parsed.path.rstrip("/")
@@ -202,7 +214,6 @@ def request_with_retries(
     url: str,
     *,
     stream: bool = False,
-    allow_redirects: bool = True,
 ) -> requests.Response:
     last_message = "network request failed"
     attempts = len(RETRY_DELAYS) + 1
@@ -211,7 +222,7 @@ def request_with_retries(
             response = session.get(
                 url,
                 timeout=TIMEOUT_SECONDS,
-                allow_redirects=allow_redirects,
+                allow_redirects=False,
                 stream=stream,
             )
         except requests.RequestException as exc:
@@ -239,7 +250,13 @@ def request_with_retries(
     raise FetchError("NETWORK", last_message)
 
 
-def _validate_public_asset_url(url: str) -> None:
+def _validate_trusted_public_url(
+    url: str,
+    *,
+    trusted_hosts: frozenset[str],
+    label: str,
+    host_description: str,
+) -> None:
     try:
         parsed = urlsplit(url)
         hostname = parsed.hostname
@@ -256,14 +273,15 @@ def _validate_public_asset_url(url: str) -> None:
     ):
         raise FetchError(
             "NETWORK",
-            "Image URL must use HTTPS on the public Internet without credentials.",
+            f"{label.capitalize()} URL must use HTTPS on the public Internet "
+            "without credentials.",
         )
 
     hostname = hostname.lower()
-    if hostname not in TRUSTED_ASSET_HOSTS:
+    if hostname not in trusted_hosts:
         raise FetchError(
             "NETWORK",
-            f"Refusing image destination outside the trusted WeChat CDN: {hostname}.",
+            f"Refusing {label} destination outside {host_description}: {hostname}.",
         )
 
     try:
@@ -278,11 +296,14 @@ def _validate_public_asset_url(url: str) -> None:
     except OSError as exc:
         raise FetchError(
             "NETWORK",
-            f"Could not resolve image host {hostname}: {exc}",
+            f"Could not resolve {label} host {hostname}: {exc}",
         ) from exc
 
     if not addresses:
-        raise FetchError("NETWORK", f"Image host {hostname} resolved to no addresses.")
+        raise FetchError(
+            "NETWORK",
+            f"{label.capitalize()} host {hostname} resolved to no addresses.",
+        )
 
     for address in addresses:
         try:
@@ -290,7 +311,7 @@ def _validate_public_asset_url(url: str) -> None:
         except ValueError as exc:
             raise FetchError(
                 "NETWORK",
-                f"Image host {hostname} resolved to an invalid address.",
+                f"{label.capitalize()} host {hostname} resolved to an invalid address.",
             ) from exc
         if not (
             parsed_address.is_global
@@ -301,25 +322,45 @@ def _validate_public_asset_url(url: str) -> None:
         ):
             raise FetchError(
                 "NETWORK",
-                f"Refusing non-public image destination {hostname} ({address}).",
+                f"Refusing non-public {label} destination {hostname} ({address}).",
             )
 
 
-def _request_asset_with_retries(
+def _validate_public_asset_url(url: str) -> None:
+    _validate_trusted_public_url(
+        url,
+        trusted_hosts=TRUSTED_ASSET_HOSTS,
+        label="image",
+        host_description="the trusted WeChat CDN",
+    )
+
+
+def _validate_public_article_url(url: str) -> None:
+    _validate_trusted_public_url(
+        url,
+        trusted_hosts=TRUSTED_ARTICLE_HOSTS,
+        label="article",
+        host_description="the trusted WeChat article host",
+    )
+
+
+def _request_with_validated_redirects(
     session: requests.Session,
     url: str,
+    *,
+    validate_url: Callable[[str], None],
+    max_redirects: int,
+    label: str,
 ) -> tuple[requests.Response, str]:
     current_url = url
-    redirect_statuses = {301, 302, 303, 307, 308}
-    for redirect_count in range(MAX_ASSET_REDIRECTS + 1):
-        _validate_public_asset_url(current_url)
+    for redirect_count in range(max_redirects + 1):
+        validate_url(current_url)
         response = request_with_retries(
             session,
             current_url,
             stream=True,
-            allow_redirects=False,
         )
-        if response.status_code not in redirect_statuses:
+        if response.status_code not in REDIRECT_STATUSES:
             return response, current_url
 
         location = response.headers.get("Location", "").strip()
@@ -327,54 +368,121 @@ def _request_asset_with_retries(
         if not location:
             raise FetchError(
                 "NETWORK",
-                "Image redirect response did not include a Location header.",
+                f"{label.capitalize()} redirect response did not include "
+                "a Location header.",
             )
-        if redirect_count == MAX_ASSET_REDIRECTS:
+        if redirect_count == max_redirects:
             raise FetchError(
                 "NETWORK",
-                f"Image request exceeded {MAX_ASSET_REDIRECTS} redirects.",
+                f"{label.capitalize()} request exceeded {max_redirects} redirects.",
             )
         current_url = urljoin(current_url, location)
 
-    raise FetchError("NETWORK", "Image request exceeded the redirect limit.")
+    raise FetchError(
+        "NETWORK",
+        f"{label.capitalize()} request exceeded the redirect limit.",
+    )
 
 
-def _read_bounded_asset(response: requests.Response) -> bytes:
+def _request_asset_with_retries(
+    session: requests.Session,
+    url: str,
+) -> tuple[requests.Response, str]:
+    return _request_with_validated_redirects(
+        session,
+        url,
+        validate_url=_validate_public_asset_url,
+        max_redirects=MAX_ASSET_REDIRECTS,
+        label="image",
+    )
+
+
+def _request_article_with_retries(
+    session: requests.Session,
+    url: str,
+) -> tuple[requests.Response, str]:
+    return _request_with_validated_redirects(
+        session,
+        url,
+        validate_url=_validate_public_article_url,
+        max_redirects=MAX_ARTICLE_REDIRECTS,
+        label="article",
+    )
+
+
+def _read_bounded_response(
+    response: requests.Response,
+    *,
+    max_bytes: int,
+    chunk_bytes: int,
+    label: str,
+    require_content: bool,
+) -> bytes:
     raw_length = response.headers.get("Content-Length", "").strip()
     if raw_length:
         try:
             declared_length = int(raw_length)
         except ValueError:
             declared_length = -1
-        if declared_length > MAX_ASSET_BYTES:
+        if declared_length > max_bytes:
             raise FetchError(
                 "NETWORK",
-                f"Image response exceeds the {MAX_ASSET_BYTES}-byte limit.",
+                f"{label.capitalize()} response exceeds the {max_bytes}-byte limit.",
             )
 
     payload = bytearray()
-    for chunk in response.iter_content(chunk_size=ASSET_CHUNK_BYTES):
+    started_at = time.monotonic()
+    for chunk in response.iter_content(chunk_size=chunk_bytes):
+        if time.monotonic() - started_at > TIMEOUT_SECONDS:
+            raise FetchError(
+                "NETWORK",
+                f"{label.capitalize()} response exceeded the "
+                f"{TIMEOUT_SECONDS}-second read deadline.",
+            )
         if not chunk:
             continue
         if not isinstance(chunk, bytes):
-            raise FetchError("NETWORK", "Image response yielded a non-byte chunk.")
-        if len(payload) + len(chunk) > MAX_ASSET_BYTES:
             raise FetchError(
                 "NETWORK",
-                f"Image response exceeds the {MAX_ASSET_BYTES}-byte limit.",
+                f"{label.capitalize()} response yielded a non-byte chunk.",
+            )
+        if len(payload) + len(chunk) > max_bytes:
+            raise FetchError(
+                "NETWORK",
+                f"{label.capitalize()} response exceeds the {max_bytes}-byte limit.",
             )
         payload.extend(chunk)
 
-    if not payload:
+    if require_content and not payload:
         raise FetchError(
             "NETWORK",
-            "Image request returned an empty response body.",
+            f"{label.capitalize()} request returned an empty response body.",
         )
     return bytes(payload)
 
 
+def _read_bounded_asset(response: requests.Response) -> bytes:
+    return _read_bounded_response(
+        response,
+        max_bytes=MAX_ASSET_BYTES,
+        chunk_bytes=ASSET_CHUNK_BYTES,
+        label="image",
+        require_content=True,
+    )
+
+
+def _read_bounded_article(response: requests.Response) -> bytes:
+    return _read_bounded_response(
+        response,
+        max_bytes=MAX_ARTICLE_BYTES,
+        chunk_bytes=ARTICLE_CHUNK_BYTES,
+        label="article",
+        require_content=False,
+    )
+
+
 def fetch_html(session: requests.Session, url: str) -> bytes:
-    response = request_with_retries(session, url)
+    response, _final_url = _request_article_with_retries(session, url)
     try:
         if response.status_code in {404, 410}:
             raise FetchError("EXPIRED_LINK", f"Article URL returned HTTP {response.status_code}.")
@@ -385,7 +493,12 @@ def fetch_html(session: requests.Session, url: str) -> bytes:
                 "NETWORK",
                 f"Article request returned HTTP {response.status_code}.",
             )
-        return response.content
+        return _read_bounded_article(response)
+    except requests.RequestException as exc:
+        raise FetchError(
+            "NETWORK",
+            f"Article response failed while streaming: {exc}",
+        ) from exc
     finally:
         response.close()
 
@@ -1142,7 +1255,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def emit_json(payload: dict[str, Any]) -> None:
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    encoded = (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
+    binary_stdout = getattr(sys.stdout, "buffer", None)
+    if binary_stdout is not None:
+        binary_stdout.write(encoded)
+        binary_stdout.flush()
+        return
+    sys.stdout.write(encoded.decode("utf-8"))
     sys.stdout.flush()
 
 

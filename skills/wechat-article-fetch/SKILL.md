@@ -35,7 +35,7 @@ python <skill-dir>/scripts/fetch_mp_article.py <url> [--assets] [--refresh] [--o
 
 | `error_code` | Meaning | Downstream action |
 | --- | --- | --- |
-| `NOT_MP_URL` | The input is not a supported `mp.weixin.qq.com` article URL or has no safe `sn` cache key. | Give up for this input and ask for a valid WeChat article link. Do not retry unchanged. |
+| `NOT_MP_URL` | The input is not a supported HTTPS `mp.weixin.qq.com` article URL or has no safe `sn` cache key. | Give up for this input and ask for a valid HTTPS WeChat article link. Do not retry unchanged. |
 | `DELETED` | The publisher deleted the article or the page explicitly reports deletion. | Give up. Ask for another authorized source or archived copy. |
 | `NEEDS_VERIFY` | WeChat returned an environment, rate-limit, or verification page. | Do not treat the page as content. Retry later with backoff or ask the user to provide the article content; avoid rapid automatic retries. |
 | `EXPIRED_LINK` | The link is invalid, expired, or reports a parameter error. | Give up for this URL and ask for a fresh article link. |
