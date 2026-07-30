@@ -23,6 +23,41 @@ CONTRACT_PATH = (
     / "references"
     / "review-timer-contract.json"
 )
+SCHEDULED_SURFACES = {
+    "relative_one_shot",
+    "heartbeat_rrule_only",
+    "dtstart_or_count_rejected",
+}
+UNSCHEDULED_SURFACES = {
+    "heartbeat_rrule_rejected",
+    "created_timer",
+}
+EXPECTED_SCHEDULE_BY_CASE = {
+    "native_relative_one_shot": (
+        "relative_one_shot",
+        "now_utc_plus_6m",
+    ),
+    "rrule_only_heartbeat": (
+        "heartbeat_rrule_only",
+        "target_at_utc",
+    ),
+    "relative_schedule_rejected": (
+        "dtstart_or_count_rejected",
+        "target_at_utc",
+    ),
+    "utc_heartbeat_rejected": (
+        "heartbeat_rrule_rejected",
+        "none",
+    ),
+    "next_run_out_of_tolerance": (
+        "created_timer",
+        "none",
+    ),
+    "next_run_unverifiable": (
+        "created_timer",
+        "none",
+    ),
+}
 
 
 def _load_resolver():
@@ -39,6 +74,18 @@ def _load_resolver():
 
 
 resolver = _load_resolver()
+
+
+def _scheduled_at_from_contract_basis(schedule_basis, resolution):
+    if schedule_basis == "now_utc_plus_6m":
+        return resolution.now_utc + resolver.REVIEW_DELAY
+    if schedule_basis == "target_at_utc":
+        return resolution.target_at_utc
+    if schedule_basis == "local_wall_time":
+        return resolution.target_at_local.replace(tzinfo=timezone.utc)
+    if schedule_basis == "none":
+        return None
+    raise ValueError(f"Unknown schedule_basis: {schedule_basis}")
 
 
 class ReviewTimerResolverTests(unittest.TestCase):
@@ -150,6 +197,156 @@ class ReviewTimerResolverTests(unittest.TestCase):
             tested_case_ids.append(case["id"])
 
         self.assertEqual(4, len(tested_case_ids))
+
+    def test_contract_schedule_basis_and_surface_match_resolver_behavior(self):
+        cases = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
+        resolution = resolver.resolve_review_timer(
+            now=self.started_at,
+            user_timezone="Asia/Shanghai",
+            resolved_next_run=self.target_at_utc,
+            verification_time=self.now_utc,
+        )
+        controlled_surfaces = SCHEDULED_SURFACES | UNSCHEDULED_SURFACES
+        self.assertEqual(
+            controlled_surfaces,
+            {case["surface"] for case in cases},
+        )
+        self.assertEqual(
+            set(EXPECTED_SCHEDULE_BY_CASE),
+            {case["id"] for case in cases},
+        )
+
+        for case in cases:
+            with self.subTest(case_id=case["id"]):
+                self.assertEqual(
+                    EXPECTED_SCHEDULE_BY_CASE[case["id"]],
+                    (case["surface"], case["schedule_basis"]),
+                )
+                self.assertIn(case["surface"], controlled_surfaces)
+                scheduled_at = _scheduled_at_from_contract_basis(
+                    case["schedule_basis"],
+                    resolution,
+                )
+                if case["surface"] in SCHEDULED_SURFACES:
+                    self.assertEqual(
+                        resolution.target_at_utc,
+                        scheduled_at,
+                        case["id"],
+                    )
+                    if case["surface"] != "relative_one_shot":
+                        self.assertEqual(
+                            resolution.rrule_fields,
+                            resolver.derive_utc_rrule_fields(scheduled_at),
+                            case["id"],
+                        )
+                else:
+                    self.assertIsNone(scheduled_at, case["id"])
+
+    def test_london_winter_and_summer_resolve_the_same_local_delay(self):
+        cases = (
+            (
+                "winter",
+                datetime(
+                    2026,
+                    1,
+                    15,
+                    12,
+                    0,
+                    tzinfo=ZoneInfo("Europe/London"),
+                ),
+                datetime.fromisoformat("2026-01-15T12:06:00+00:00"),
+                12,
+            ),
+            (
+                "summer",
+                datetime(
+                    2026,
+                    7,
+                    15,
+                    12,
+                    0,
+                    tzinfo=ZoneInfo("Europe/London"),
+                ),
+                datetime.fromisoformat("2026-07-15T11:06:00+00:00"),
+                11,
+            ),
+        )
+
+        observed_offsets = []
+        for season, started_at, expected_target_at_utc, expected_byhour in cases:
+            with self.subTest(season=season):
+                now_utc = started_at.astimezone(timezone.utc)
+                resolution = resolver.resolve_review_timer(
+                    now=started_at,
+                    user_timezone="Europe/London",
+                    resolved_next_run=expected_target_at_utc
+                    + resolver.NEXT_RUN_TOLERANCE,
+                    verification_time=now_utc,
+                )
+                self.assertEqual(
+                    expected_target_at_utc,
+                    resolution.target_at_utc,
+                )
+                self.assertEqual(
+                    started_at + resolver.REVIEW_DELAY,
+                    resolution.target_at_local,
+                )
+                self.assertEqual(
+                    expected_byhour,
+                    resolution.rrule_fields["BYHOUR"],
+                )
+                self.assertEqual(60, resolution.next_run.delta_seconds)
+                self.assertEqual("accept", resolution.next_run.decision)
+                observed_offsets.append(resolution.target_at_local.utcoffset())
+
+        self.assertEqual(
+            [timedelta(0), timedelta(hours=1)],
+            observed_offsets,
+        )
+
+    def test_crosses_london_fall_back_on_the_absolute_timeline(self):
+        started_at = datetime(
+            2026,
+            10,
+            25,
+            0,
+            58,
+            tzinfo=timezone.utc,
+        ).astimezone(ZoneInfo("Europe/London"))
+        expected_target_at_utc = datetime(
+            2026,
+            10,
+            25,
+            1,
+            4,
+            tzinfo=timezone.utc,
+        )
+
+        resolution = resolver.resolve_review_timer(
+            now=started_at,
+            user_timezone="Europe/London",
+            resolved_next_run=expected_target_at_utc,
+            verification_time=started_at.astimezone(timezone.utc),
+        )
+
+        self.assertEqual(timedelta(hours=1), started_at.utcoffset())
+        self.assertEqual(expected_target_at_utc, resolution.target_at_utc)
+        self.assertEqual(
+            timedelta(minutes=6),
+            resolution.target_at_utc - started_at.astimezone(timezone.utc),
+        )
+        self.assertEqual(timedelta(0), resolution.target_at_local.utcoffset())
+        self.assertEqual(1, resolution.target_at_local.fold)
+        self.assertEqual(
+            {
+                "BYHOUR": 1,
+                "BYMINUTE": 4,
+                "BYSECOND": 0,
+                "BYDAY": "SU",
+            },
+            resolution.rrule_fields,
+        )
+        self.assertEqual("accept", resolution.next_run.decision)
 
     def test_cli_emits_machine_readable_zoneinfo_resolution(self):
         completed = subprocess.run(
