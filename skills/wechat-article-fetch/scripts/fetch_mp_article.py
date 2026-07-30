@@ -633,6 +633,8 @@ class MarkdownConverter:
                 value = self._cleanup(value).strip().replace("|", r"\|")
                 value = re.sub(r"\s*\n\s*", "<br>", value)
                 values.append(value)
+                colspan = max(1, _integer_attribute(cell, "colspan", 1))
+                values.extend("" for _ in range(colspan - 1))
             rows.append((values, any(_tag_name(cell) == "th" for cell in cells)))
         if not rows:
             return ""

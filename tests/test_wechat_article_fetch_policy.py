@@ -532,6 +532,9 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             def __iter__(self):
                 return iter(self.children)
 
+            def get(self, name):
+                return None
+
             def xpath(self, expression):
                 return self.children if expression == ".//tr" else []
 
@@ -550,6 +553,51 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             rendered,
         )
 
+    def test_table_colspan_preserves_logical_column_positions(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def __init__(self, tag, text=None, children=(), attrs=None):
+                self.tag = tag
+                self.text = text
+                self.tail = None
+                self.children = list(children)
+                self.attrs = attrs or {}
+
+            def __iter__(self):
+                return iter(self.children)
+
+            def get(self, name):
+                return self.attrs.get(name)
+
+        table = Node(
+            "table",
+            children=[
+                Node(
+                    "tr",
+                    children=[
+                        Node("th", "H1"),
+                        Node("th", "H2"),
+                        Node("th", "H3"),
+                    ],
+                ),
+                Node(
+                    "tr",
+                    children=[
+                        Node("td", "A", attrs={"colspan": "2"}),
+                        Node("td", "B"),
+                    ],
+                ),
+            ],
+        )
+        rendered = module.MarkdownConverter({})._render_table(table)
+
+        self.assertEqual(
+            "\n\n| H1 | H2 | H3 |\n| --- | --- | --- |\n"
+            "| A |  | B |\n\n",
+            rendered,
+        )
+
     def test_nested_table_rows_are_not_duplicated_in_outer_table(self):
         module = _load_fetch_module()
 
@@ -562,6 +610,9 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
 
             def __iter__(self):
                 return iter(self.children)
+
+            def get(self, name):
+                return None
 
             def xpath(self, expression):
                 if expression != ".//tr":
@@ -693,6 +744,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "Skipped subtrees do not contribute",
             "Nested list rows are indented to the parent marker's content column",
             "a `<td>`-only table receives an empty synthetic header",
+            "`colspan` cells expand across their logical columns",
             "Nested table rows stay within",
             "visible text or at least one image URL",
             "prefer `data-src` and fall back to `src`",
