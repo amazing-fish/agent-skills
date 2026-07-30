@@ -735,7 +735,10 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             def get(self, *args, **kwargs):
                 return self.response
 
-        with tempfile.TemporaryDirectory() as temporary:
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(
+            module,
+            "_validate_public_asset_url",
+        ):
             session = Session()
             assets_dir = Path(temporary) / "assets"
             asset_map, warnings = module.download_assets(
@@ -757,7 +760,10 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         class Response:
             status_code = 200
             headers = {"Content-Type": "image/jpeg"}
-            content = b""
+
+            def iter_content(self, *, chunk_size):
+                self.chunk_size = chunk_size
+                return iter(())
 
             def close(self):
                 self.closed = True
@@ -769,7 +775,10 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             def get(self, *args, **kwargs):
                 return self.response
 
-        with tempfile.TemporaryDirectory() as temporary:
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(
+            module,
+            "_validate_public_asset_url",
+        ):
             session = Session()
             assets_dir = Path(temporary) / "assets"
             asset_map, warnings = module.download_assets(
@@ -785,10 +794,118 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             self.assertEqual([], list(assets_dir.iterdir()))
             self.assertTrue(session.response.closed)
 
+    def test_asset_download_rejects_private_initial_and_redirect_destinations(self):
+        module = _load_fetch_module()
+
+        class Response:
+            status_code = 302
+            headers = {"Location": "https://mmbiz.qpic.cn/redirected.jpg"}
+
+            def close(self):
+                self.closed = True
+
+        class Session:
+            def __init__(self):
+                self.calls = []
+                self.response = Response()
+
+            def get(self, *args, **kwargs):
+                self.calls.append((args, kwargs))
+                return self.response
+
+        resolved_addresses = iter(("93.184.216.34", "169.254.169.254"))
+
+        def resolve(hostname, port, *, type):
+            self.assertEqual("mmbiz.qpic.cn", hostname)
+            return [
+                (
+                    module.socket.AF_INET,
+                    module.socket.SOCK_STREAM,
+                    6,
+                    "",
+                    (next(resolved_addresses), port),
+                )
+            ]
+
+        with mock.patch.object(module.socket, "getaddrinfo", side_effect=resolve):
+            with tempfile.TemporaryDirectory() as temporary:
+                session = Session()
+                asset_map, warnings = module.download_assets(
+                    session,
+                    ["https://127.0.0.1/private.jpg"],
+                    Path(temporary) / "assets",
+                    reuse_existing=False,
+                )
+
+                self.assertEqual({}, asset_map)
+                self.assertEqual([], session.calls)
+                self.assertIn("trusted WeChat CDN", warnings[0])
+
+            with tempfile.TemporaryDirectory() as temporary:
+                session = Session()
+                asset_map, warnings = module.download_assets(
+                    session,
+                    ["https://mmbiz.qpic.cn/redirect.jpg"],
+                    Path(temporary) / "assets",
+                    reuse_existing=False,
+                )
+
+                self.assertEqual({}, asset_map)
+                self.assertEqual(1, len(session.calls))
+                self.assertTrue(session.calls[0][1]["stream"])
+                self.assertFalse(session.calls[0][1]["allow_redirects"])
+                self.assertTrue(session.response.closed)
+                self.assertIn("non-public image destination", warnings[0])
+
+    def test_oversized_streaming_image_is_not_cached_as_asset(self):
+        module = _load_fetch_module()
+
+        class Response:
+            status_code = 200
+            headers = {"Content-Type": "image/jpeg"}
+
+            def iter_content(self, *, chunk_size):
+                self.chunk_size = chunk_size
+                return iter((b"12345678", b"9"))
+
+            def close(self):
+                self.closed = True
+
+        class Session:
+            def __init__(self):
+                self.response = Response()
+
+            def get(self, *args, **kwargs):
+                return self.response
+
+        with (
+            tempfile.TemporaryDirectory() as temporary,
+            mock.patch.object(module, "_validate_public_asset_url"),
+            mock.patch.object(module, "MAX_ASSET_BYTES", 8),
+        ):
+            session = Session()
+            assets_dir = Path(temporary) / "assets"
+            asset_map, warnings = module.download_assets(
+                session,
+                ["https://mmbiz.qpic.cn/oversized.jpg"],
+                assets_dir,
+                reuse_existing=False,
+            )
+
+            self.assertEqual({}, asset_map)
+            self.assertEqual(1, len(warnings))
+            self.assertIn("8-byte limit", warnings[0])
+            self.assertEqual([], list(assets_dir.iterdir()))
+            self.assertEqual(module.ASSET_CHUNK_BYTES, session.response.chunk_size)
+            self.assertTrue(session.response.closed)
+
     def test_network_cache_and_provenance_contracts_remain_explicit(self):
         for required_script_contract in (
             "TIMEOUT_SECONDS = 30",
             "RETRY_DELAYS = (1, 2, 4)",
+            "MAX_ASSET_BYTES = 20 * 1024 * 1024",
+            "MAX_ASSET_REDIRECTS = 5",
+            'TRUSTED_ASSET_HOSTS = frozenset({"mmbiz.qpic.cn"})',
             "cached=cache_hit",
             '"cached": cached',
             'f"原文链接：{source_url}"',
@@ -811,6 +928,10 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "Valid UTF-16 surrogate pairs become one supplementary Unicode character",
             "known non-image `Content-Type` is an image failure",
             "empty image payload is an image failure",
+            "public HTTPS destination",
+            "trusted WeChat CDN host `mmbiz.qpic.cn`",
+            "every redirect target",
+            "20 MiB",
             "Skipped subtrees do not contribute",
             "Nested list rows are indented to the parent marker's content column",
             "a `<td>`-only table receives an empty synthetic header",

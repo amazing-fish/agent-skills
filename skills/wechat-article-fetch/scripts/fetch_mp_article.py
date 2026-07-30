@@ -5,17 +5,19 @@ from __future__ import annotations
 
 import argparse
 import html as html_lib
+import ipaddress
 import json
 import os
 import re
 import shutil
+import socket
 import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urljoin, urlsplit
 
 import requests
 from lxml import etree
@@ -29,6 +31,11 @@ USER_AGENT = (
 )
 TIMEOUT_SECONDS = 30
 RETRY_DELAYS = (1, 2, 4)
+MAX_ASSET_BYTES = 20 * 1024 * 1024
+ASSET_CHUNK_BYTES = 64 * 1024
+MAX_ASSET_REDIRECTS = 5
+TRUSTED_ASSET_HOSTS = frozenset({"mmbiz.qpic.cn"})
+TUNNEL_FAKE_IP_RANGE = ipaddress.ip_network("198.18.0.0/15")
 CHINA_STANDARD_TIME = timezone(timedelta(hours=8), name="Asia/Shanghai")
 MAX_TABLE_COLUMNS = 128
 SN_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,160}\Z")
@@ -195,6 +202,7 @@ def request_with_retries(
     url: str,
     *,
     stream: bool = False,
+    allow_redirects: bool = True,
 ) -> requests.Response:
     last_message = "network request failed"
     attempts = len(RETRY_DELAYS) + 1
@@ -203,7 +211,7 @@ def request_with_retries(
             response = session.get(
                 url,
                 timeout=TIMEOUT_SECONDS,
-                allow_redirects=True,
+                allow_redirects=allow_redirects,
                 stream=stream,
             )
         except requests.RequestException as exc:
@@ -229,6 +237,140 @@ def request_with_retries(
         return response
 
     raise FetchError("NETWORK", last_message)
+
+
+def _validate_public_asset_url(url: str) -> None:
+    try:
+        parsed = urlsplit(url)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError as exc:
+        raise FetchError("NETWORK", f"Invalid image URL: {exc}") from exc
+
+    if (
+        parsed.scheme.lower() != "https"
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in {None, 443}
+    ):
+        raise FetchError(
+            "NETWORK",
+            "Image URL must use HTTPS on the public Internet without credentials.",
+        )
+
+    hostname = hostname.lower()
+    if hostname not in TRUSTED_ASSET_HOSTS:
+        raise FetchError(
+            "NETWORK",
+            f"Refusing image destination outside the trusted WeChat CDN: {hostname}.",
+        )
+
+    try:
+        addresses = {
+            entry[4][0].split("%", 1)[0]
+            for entry in socket.getaddrinfo(
+                hostname,
+                port or 443,
+                type=socket.SOCK_STREAM,
+            )
+        }
+    except OSError as exc:
+        raise FetchError(
+            "NETWORK",
+            f"Could not resolve image host {hostname}: {exc}",
+        ) from exc
+
+    if not addresses:
+        raise FetchError("NETWORK", f"Image host {hostname} resolved to no addresses.")
+
+    for address in addresses:
+        try:
+            parsed_address = ipaddress.ip_address(address)
+        except ValueError as exc:
+            raise FetchError(
+                "NETWORK",
+                f"Image host {hostname} resolved to an invalid address.",
+            ) from exc
+        if not (
+            parsed_address.is_global
+            or (
+                parsed_address.version == 4
+                and parsed_address in TUNNEL_FAKE_IP_RANGE
+            )
+        ):
+            raise FetchError(
+                "NETWORK",
+                f"Refusing non-public image destination {hostname} ({address}).",
+            )
+
+
+def _request_asset_with_retries(
+    session: requests.Session,
+    url: str,
+) -> tuple[requests.Response, str]:
+    current_url = url
+    redirect_statuses = {301, 302, 303, 307, 308}
+    for redirect_count in range(MAX_ASSET_REDIRECTS + 1):
+        _validate_public_asset_url(current_url)
+        response = request_with_retries(
+            session,
+            current_url,
+            stream=True,
+            allow_redirects=False,
+        )
+        if response.status_code not in redirect_statuses:
+            return response, current_url
+
+        location = response.headers.get("Location", "").strip()
+        response.close()
+        if not location:
+            raise FetchError(
+                "NETWORK",
+                "Image redirect response did not include a Location header.",
+            )
+        if redirect_count == MAX_ASSET_REDIRECTS:
+            raise FetchError(
+                "NETWORK",
+                f"Image request exceeded {MAX_ASSET_REDIRECTS} redirects.",
+            )
+        current_url = urljoin(current_url, location)
+
+    raise FetchError("NETWORK", "Image request exceeded the redirect limit.")
+
+
+def _read_bounded_asset(response: requests.Response) -> bytes:
+    raw_length = response.headers.get("Content-Length", "").strip()
+    if raw_length:
+        try:
+            declared_length = int(raw_length)
+        except ValueError:
+            declared_length = -1
+        if declared_length > MAX_ASSET_BYTES:
+            raise FetchError(
+                "NETWORK",
+                f"Image response exceeds the {MAX_ASSET_BYTES}-byte limit.",
+            )
+
+    payload = bytearray()
+    for chunk in response.iter_content(chunk_size=ASSET_CHUNK_BYTES):
+        if not chunk:
+            continue
+        if not isinstance(chunk, bytes):
+            raise FetchError("NETWORK", "Image response yielded a non-byte chunk.")
+        if len(payload) + len(chunk) > MAX_ASSET_BYTES:
+            raise FetchError(
+                "NETWORK",
+                f"Image response exceeds the {MAX_ASSET_BYTES}-byte limit.",
+            )
+        payload.extend(chunk)
+
+    if not payload:
+        raise FetchError(
+            "NETWORK",
+            "Image request returned an empty response body.",
+        )
+    return bytes(payload)
 
 
 def fetch_html(session: requests.Session, url: str) -> bytes:
@@ -828,7 +970,7 @@ def download_assets(
 
         response: requests.Response | None = None
         try:
-            response = request_with_retries(session, url, stream=True)
+            response, final_url = _request_asset_with_retries(session, url)
             if response.status_code != 200:
                 raise FetchError(
                     "NETWORK",
@@ -840,13 +982,8 @@ def download_assets(
                     "NETWORK",
                     f"Image request returned non-image Content-Type {content_type}.",
                 )
-            payload = response.content
-            if not payload:
-                raise FetchError(
-                    "NETWORK",
-                    "Image request returned an empty response body.",
-                )
-            extension = _image_extension(response, url)
+            payload = _read_bounded_asset(response)
+            extension = _image_extension(response, final_url)
             destination = assets_dir / f"{index:03d}{extension}"
             atomic_write_bytes(destination, payload)
             asset_map[url] = f"assets/{destination.name}"
