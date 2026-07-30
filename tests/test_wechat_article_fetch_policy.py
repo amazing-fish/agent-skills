@@ -211,6 +211,56 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         self.assertEqual(b"CSDN \xf0\x9f\x98\x80", decoded.encode("utf-8"))
         self.assertEqual("\ufffd", module._decode_js_string(r"\uD83D"))
 
+    def test_image_only_body_uses_src_fallback_and_is_not_empty(self):
+        module = _load_fetch_module()
+
+        class Image:
+            def get(self, name):
+                return {"data-src": " ", "src": "//mmbiz.qpic.cn/poster.jpg"}.get(name)
+
+        class Content:
+            def text_content(self):
+                return ""
+
+            def xpath(self, expression):
+                return [Image()] if expression == ".//img" else []
+
+        class Document:
+            def xpath(self, expression, **kwargs):
+                return [Content()] if expression == "//div[@id='js_content']" else []
+
+        metadata = {
+            "og:title": "Image-only article",
+            "og:description": "",
+            "og:image": "",
+        }
+        with (
+            mock.patch.object(
+                module.lxml_html,
+                "fromstring",
+                return_value=Document(),
+                create=True,
+            ),
+            mock.patch.object(
+                module,
+                "_meta_content",
+                side_effect=lambda document, name: metadata[name],
+            ),
+            mock.patch.object(module, "_extract_account", return_value="Account"),
+            mock.patch.object(module, "_extract_timestamp", return_value=1785311401),
+        ):
+            article = module.parse_article(b"<html></html>")
+
+        self.assertEqual(0, article.char_count)
+        self.assertEqual(
+            ["https://mmbiz.qpic.cn/poster.jpg"],
+            article.image_urls,
+        )
+        self.assertEqual(
+            "\n\n![](https://mmbiz.qpic.cn/poster.jpg)\n\n",
+            module.MarkdownConverter({})._render_image(Image()),
+        )
+
     def test_plain_text_escapes_markdown_without_escaping_converter_markup(self):
         module = _load_fetch_module()
 
@@ -220,6 +270,8 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             ("> quoted", r"\> quoted"),
             ("---", r"\-\-\-"),
             ("- - -", r"\- \- \-"),
+            ("~~~", r"\~\~\~"),
+            ("~~text~~", r"\~\~text\~\~"),
             ("*stars* and [brackets]", r"\*stars\* and \[brackets\]"),
         ):
             with self.subTest(source=source):
@@ -245,14 +297,18 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         module = _load_fetch_module()
 
         class Node:
-            def __init__(self, tag, text=None, children=()):
+            def __init__(self, tag, text=None, children=(), attrs=None):
                 self.tag = tag
                 self.text = text
                 self.tail = None
                 self.children = list(children)
+                self.attrs = attrs or {}
 
             def __iter__(self):
                 return iter(self.children)
+
+            def get(self, name):
+                return self.attrs.get(name)
 
         nested = Node("ul", children=[Node("li", "child")])
         items = [Node("li", f"item {index}") for index in range(1, 10)]
@@ -263,6 +319,39 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         )
 
         self.assertIn("10. parent\n    - child", rendered)
+
+    def test_ordered_list_preserves_start_and_item_value(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def __init__(self, tag, text=None, children=(), attrs=None):
+                self.tag = tag
+                self.text = text
+                self.tail = None
+                self.children = list(children)
+                self.attrs = attrs or {}
+
+            def __iter__(self):
+                return iter(self.children)
+
+            def get(self, name):
+                return self.attrs.get(name)
+
+        ordered = Node(
+            "ol",
+            attrs={"start": "5"},
+            children=[
+                Node("li", "five"),
+                Node("li", "nine", attrs={"value": "9"}),
+                Node("li", "ten"),
+            ],
+        )
+        rendered = module.MarkdownConverter({})._render_list(
+            ordered,
+            ordered=True,
+        )
+
+        self.assertEqual("\n\n5. five\n9. nine\n10. ten\n\n", rendered)
 
     def test_td_only_table_retains_first_row_as_data(self):
         module = _load_fetch_module()
@@ -356,6 +445,10 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "known non-image `Content-Type` is an image failure",
             "Nested list rows are indented to the parent marker's content column",
             "a `<td>`-only table receives an empty synthetic header",
+            "visible text or at least one image URL",
+            "prefer `data-src` and fall back to `src`",
+            "`~~~`, or `~~text~~`",
+            "Ordered lists preserve `<ol start>` and `<li value>` numbering",
         ):
             with self.subTest(required_output_contract=required_output_contract):
                 self.assertIn(required_output_contract, self.contract)

@@ -334,6 +334,13 @@ def _normalize_image_url(value: str) -> str:
     return value
 
 
+def _image_source(image: Any) -> str:
+    lazy_source = _normalize_image_url(str(image.get("data-src") or ""))
+    if lazy_source:
+        return lazy_source
+    return _normalize_image_url(str(image.get("src") or ""))
+
+
 def parse_article(raw_html: bytes) -> Article:
     source = raw_html.decode("utf-8", errors="replace")
     try:
@@ -349,7 +356,12 @@ def parse_article(raw_html: bytes) -> Article:
     content = contents[0]
     visible_text = content.text_content()
     char_count = len(re.sub(r"\s+", "", visible_text))
-    if char_count == 0:
+    image_urls = [
+        value
+        for image in content.xpath(".//img")
+        if (value := _image_source(image))
+    ]
+    if char_count == 0 and not image_urls:
         detect_page_error(raw_html)
         raise FetchError("EMPTY_CONTENT", "The div#js_content article body is empty.")
 
@@ -386,12 +398,6 @@ def parse_article(raw_html: bytes) -> Article:
     except (OSError, OverflowError, ValueError) as exc:
         raise FetchError("PARSE_FAILED", f"Invalid publish timestamp: {timestamp}.") from exc
 
-    image_urls: list[str] = []
-    for image in content.xpath(".//img"):
-        value = _normalize_image_url(str(image.get("data-src") or ""))
-        if value:
-            image_urls.append(value)
-
     return Article(
         title=title,
         account=account,
@@ -418,11 +424,21 @@ def _plain_text(value: str | None) -> str:
         return ""
     normalized = re.sub(r"\s+", " ", value.replace("\xa0", " "))
     escaped = normalized.replace("\\", "\\\\")
-    escaped = re.sub(r"([`*_\[\]<>#])", r"\\\1", escaped)
+    escaped = re.sub(r"([`*_\[\]<>#~])", r"\\\1", escaped)
     if re.fullmatch(r"\s*(?:-\s*){3,}", escaped):
         escaped = escaped.replace("-", r"\-")
     escaped = re.sub(r"^(\s*)([-+])(?=\s)", r"\1\\\2", escaped)
     return re.sub(r"^(\s*)(\d+)([.)])(?=\s)", r"\1\2\\\3", escaped)
+
+
+def _integer_attribute(node: Any, name: str, default: int) -> int:
+    value = node.get(name)
+    if value is None:
+        return default
+    try:
+        return int(str(value).strip())
+    except ValueError:
+        return default
 
 
 class MarkdownConverter:
@@ -489,7 +505,7 @@ class MarkdownConverter:
         return content
 
     def _render_image(self, node: Any) -> str:
-        source = _normalize_image_url(str(node.get("data-src") or ""))
+        source = _image_source(node)
         if not source:
             return ""
         target = self.asset_map.get(source, source)
@@ -522,7 +538,8 @@ class MarkdownConverter:
     def _render_list(self, node: Any, *, ordered: bool) -> str:
         rows: list[str] = []
         items = [child for child in node if _tag_name(child) == "li"]
-        for index, item in enumerate(items, start=1):
+        next_number = _integer_attribute(node, "start", 1) if ordered else 1
+        for item in items:
             body_parts = [_plain_text(item.text)]
             nested_parts: list[str] = []
             for child in item:
@@ -535,7 +552,12 @@ class MarkdownConverter:
                     body_parts.append(self._render_node(child))
                 body_parts.append(_plain_text(child.tail))
             body = self._cleanup("".join(body_parts)).strip()
-            marker = f"{index}. " if ordered else "- "
+            if ordered:
+                item_number = _integer_attribute(item, "value", next_number)
+                marker = f"{item_number}. "
+                next_number = item_number + 1
+            else:
+                marker = "- "
             continuation = " " * len(marker)
             body_lines = body.splitlines() or [""]
             rows.append(marker + body_lines[0])
