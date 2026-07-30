@@ -598,6 +598,58 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             rendered,
         )
 
+    def test_table_spans_are_bounded_and_rowspans_reserve_columns(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def __init__(self, tag, text=None, children=(), attrs=None):
+                self.tag = tag
+                self.text = text
+                self.tail = None
+                self.children = list(children)
+                self.attrs = attrs or {}
+
+            def __iter__(self):
+                return iter(self.children)
+
+            def get(self, name):
+                return self.attrs.get(name)
+
+        rowspans = Node(
+            "table",
+            children=[
+                Node(
+                    "tr",
+                    children=[
+                        Node("td", "A", attrs={"rowspan": "2"}),
+                        Node("td", "B"),
+                    ],
+                ),
+                Node("tr", children=[Node("td", "C")]),
+            ],
+        )
+        rendered_rowspans = module.MarkdownConverter({})._render_table(rowspans)
+        self.assertEqual(
+            "\n\n|  |  |\n| --- | --- |\n"
+            "| A | B |\n|  | C |\n\n",
+            rendered_rowspans,
+        )
+
+        oversized = Node(
+            "table",
+            children=[
+                Node(
+                    "tr",
+                    children=[
+                        Node("td", "bounded", attrs={"colspan": "1000000000"})
+                    ],
+                )
+            ],
+        )
+        rendered_oversized = module.MarkdownConverter({})._render_table(oversized)
+        data_cells = rendered_oversized.strip().splitlines()[2].strip("|").split("|")
+        self.assertEqual(module.MAX_TABLE_COLUMNS, len(data_cells))
+
     def test_nested_table_rows_are_not_duplicated_in_outer_table(self):
         module = _load_fetch_module()
 
@@ -646,6 +698,24 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
 
         self.assertEqual(3, len(lines))
         self.assertEqual(1, rendered.count("inner"))
+
+    def test_fenced_code_preserves_trailing_spaces_and_tabs(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def itertext(self):
+                return iter(("first  \n```  \nsecond\t\n",))
+
+            def xpath(self, expression):
+                return []
+
+        converter = module.MarkdownConverter({})
+        rendered = converter._cleanup(converter._render_pre(Node()))
+
+        self.assertEqual(
+            "````\nfirst  \n```  \nsecond\t\n````",
+            rendered,
+        )
 
     def test_non_image_200_response_is_not_cached_as_asset(self):
         module = _load_fetch_module()
@@ -745,7 +815,10 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "Nested list rows are indented to the parent marker's content column",
             "a `<td>`-only table receives an empty synthetic header",
             "`colspan` cells expand across their logical columns",
+            "Table spans are bounded",
+            "`rowspan` reserves occupied columns",
             "Nested table rows stay within",
+            "Fenced code preserves trailing spaces and tabs",
             "visible text or at least one image URL",
             "prefer `data-src` and fall back to `src`",
             "`~~~`, or `~~text~~`",

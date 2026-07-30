@@ -30,6 +30,7 @@ USER_AGENT = (
 TIMEOUT_SECONDS = 30
 RETRY_DELAYS = (1, 2, 4)
 CHINA_STANDARD_TIME = timezone(timedelta(hours=8), name="Asia/Shanghai")
+MAX_TABLE_COLUMNS = 128
 SN_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,160}\Z")
 ERROR_CODES = {
     "NOT_MP_URL",
@@ -619,23 +620,82 @@ class MarkdownConverter:
                 collect_rows(child)
 
         collect_rows(node)
-        for row in table_rows:
+        active_rowspans: dict[int, int] = {}
+        for row_index, row in enumerate(table_rows):
             cells = [
                 cell
                 for cell in row
                 if _tag_name(cell) in {"th", "td"}
             ]
-            if not cells:
+            if not cells and not active_rowspans:
                 continue
+
+            occupied = active_rowspans
+            next_rowspans = {
+                column: remaining - 1
+                for column, remaining in occupied.items()
+                if remaining > 1
+            }
             values: list[str] = []
+            column = 0
             for cell in cells:
+                while column in occupied:
+                    column += 1
+                if column >= MAX_TABLE_COLUMNS:
+                    break
+
                 value = self._render_children(cell)
                 value = self._cleanup(value).strip().replace("|", r"\|")
                 value = re.sub(r"\s*\n\s*", "<br>", value)
+                if len(values) < column:
+                    values.extend("" for _ in range(column - len(values)))
                 values.append(value)
-                colspan = max(1, _integer_attribute(cell, "colspan", 1))
+
+                requested_colspan = max(
+                    1,
+                    min(
+                        MAX_TABLE_COLUMNS,
+                        _integer_attribute(cell, "colspan", 1),
+                    ),
+                )
+                next_occupied = min(
+                    (
+                        occupied_column
+                        for occupied_column in occupied
+                        if occupied_column > column
+                    ),
+                    default=MAX_TABLE_COLUMNS,
+                )
+                colspan = min(
+                    requested_colspan,
+                    next_occupied - column,
+                    MAX_TABLE_COLUMNS - column,
+                )
                 values.extend("" for _ in range(colspan - 1))
+                rowspan = max(
+                    1,
+                    min(
+                        len(table_rows) - row_index,
+                        _integer_attribute(cell, "rowspan", 1),
+                    ),
+                )
+                if rowspan > 1:
+                    for spanned_column in range(column, column + colspan):
+                        next_rowspans[spanned_column] = max(
+                            next_rowspans.get(spanned_column, 0),
+                            rowspan - 1,
+                        )
+                column += colspan
+
+            if occupied:
+                occupied_width = min(
+                    MAX_TABLE_COLUMNS,
+                    max(occupied) + 1,
+                )
+                if len(values) < occupied_width:
+                    values.extend("" for _ in range(occupied_width - len(values)))
             rows.append((values, any(_tag_name(cell) == "th" for cell in cells)))
+            active_rowspans = next_rowspans
         if not rows:
             return ""
 
@@ -667,14 +727,17 @@ class MarkdownConverter:
                 if not in_fence:
                     in_fence = True
                     fence_marker = marker
+                    cleaned.append(raw_line.rstrip())
                 elif marker.startswith(fence_marker):
                     in_fence = False
                     fence_marker = ""
-                cleaned.append(raw_line.rstrip())
+                    cleaned.append(raw_line.rstrip())
+                else:
+                    cleaned.append(raw_line)
                 blank = False
                 continue
             if in_fence:
-                cleaned.append(raw_line.rstrip())
+                cleaned.append(raw_line)
                 continue
 
             line = raw_line.rstrip()
