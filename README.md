@@ -74,6 +74,16 @@ skills/
 - 输出：解释主题、结构、术语、技巧、原理、学习路径与验证边界，不把完整转写或中间产物清单当作正文
 - 运行时边界：Skill 不自带抓取器或转写模型；优先复用当前工作区已有的兼容解析器，否则按 Skill 的降级流程收集证据
 
+### wechat-article-fetch
+
+把公开微信公众号文章抓取为带来源信息的结构化 Markdown，供 `kb-capture` 等下游 Skill 消费。
+
+- 定义：[skills/wechat-article-fetch/SKILL.md](skills/wechat-article-fetch/SKILL.md)
+- 输入：`mp.weixin.qq.com` 文章链接
+- 输出：缓存的 `raw.html`、带 YAML frontmatter 的 `article.md`，以及按需下载的图片资源
+- 边界：只负责数据获取，不做摘要、分类、解释或知识库归档
+- 运行时：Python 3.12、`requests` 和 `lxml`；不使用浏览器自动化
+
 
 ## 管理约定
 
