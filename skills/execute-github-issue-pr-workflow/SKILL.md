@@ -54,9 +54,7 @@ The optimizer's rewrite-only and separate-follow-up boundaries govern the standa
 
 ### Schedule the review timer safely
 
-Treat the 6-minute delay as an absolute instant, not as local wall-clock fields. Use [the review timer contract](references/review-timer-contract.json) as the normative state-machine data. It preserves the native relative schedule, verified UTC heartbeat fallback, pending stop, and fail-closed cleanup outcomes.
-
-If this Skill contains `scripts/resolve_review_timer.py`, prefer it to compute `target_at_utc`, derive the UTC RRULE fields, and verify the resolved next run. If the script is unavailable, apply the same calculations and contract directly.
+Treat the 6-minute delay as an absolute instant, not as local wall-clock fields. Use [the review timer contract](references/review-timer-contract.json) as the normative state-machine data. It preserves the native relative schedule, verified UTC heartbeat fallback, pending stop, and fail-closed cleanup outcomes. If this Skill contains `scripts/resolve_review_timer.py`, prefer it to compute `target_at_utc`, derive the UTC RRULE fields, and verify the resolved next run. If the script is unavailable, apply the same calculations and contract directly.
 
 1. Capture `now_utc`, then compute the exact `target_at_utc = now_utc + 6 minutes`. Prefer an environment-native relative one-shot wait. For Codex Desktop, use a heartbeat attached to the current thread; do not create a standalone cron automation for this follow-up.
 2. If the heartbeat surface accepts only an RRULE, derive `BYHOUR`, `BYMINUTE`, `BYSECOND`, and `BYDAY` from `target_at_utc` in UTC and ensure the first future occurrence identifies the intended instant. Never copy the user's local wall-clock fields into the RRULE. Use a timezone-aware conversion only to present the target in the user's time zone.
@@ -71,10 +69,10 @@ For each new ready-for-review PR HEAD:
 2. When it fires, refresh the PR once. If HEAD differs from the recorded HEAD, discard this cycle and start one new timer. Otherwise read the Codex state or reactions on the PR body, review decisions including requested changes, conversation and inline comments, unresolved threads, checks, and mergeability.
 3. Classify that single refresh:
    - **Passed:** the repository's current Codex-bot 👍 on the PR is sufficient. Do not require a newly created reaction, commit review, `commit_id`, or SHA binding. This assumes the configured bot maintains current PR-level state after pushes; stop if it does not. Continue only if no actionable feedback or relevant failed check remains; document any explicit check waiver.
-   - **In progress:** do not mention the bot again; set one new one-shot 6-minute timer.
-   - **Not triggered:** post `@codex review` once for this review cycle, return the comment URL, then set one new one-shot 6-minute timer.
-   - **Findings or failures:** fix in scope issues on the same branch, test, push, return the new commit URL, and start a fresh one-shot 6-minute review cycle.
-4. Never poll every minute or infer success from elapsed time, silence, or acknowledgement alone.
+   - **In progress:** do not mention the bot again.
+   - **Not triggered:** post `@codex review` once for this review cycle and return the comment URL.
+   - **Findings or failures:** fix in scope issues on the same branch, test, push, and return the new commit URL.
+4. After any non-passed classification, end the refresh by setting one new one-shot 6-minute timer under the contract above. Never poll every minute or infer success from elapsed time, silence, or acknowledgement alone.
 5. If waiting cannot continue in the current environment, report `Codex review pending` with the PR URL, HEAD, current robot state, and the next refresh time, then stop cleanly.
 
 ## Resolve findings
