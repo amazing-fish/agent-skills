@@ -163,7 +163,10 @@ def choose_output_dir(sn: str, explicit_out: Path | None) -> Path:
 
     output_dir = output_dir.resolve()
     cwd = Path.cwd().resolve()
-    if _is_relative_to(output_dir, cwd) or _inside_git_worktree(output_dir):
+    if (
+        explicit_out is not None
+        and _is_relative_to(output_dir, cwd)
+    ) or _inside_git_worktree(output_dir):
         raise FetchError(
             "PARSE_FAILED",
             "Refusing to write article output inside the current workspace or a Git worktree.",
@@ -286,7 +289,23 @@ def _decode_js_string(value: str) -> str:
     }
     for escaped, replacement in escapes.items():
         value = value.replace(escaped, replacement)
-    return html_lib.unescape(value).strip()
+    value = html_lib.unescape(value)
+
+    normalized: list[str] = []
+    index = 0
+    while index < len(value):
+        codepoint = ord(value[index])
+        if 0xD800 <= codepoint <= 0xDBFF and index + 1 < len(value):
+            low = ord(value[index + 1])
+            if 0xDC00 <= low <= 0xDFFF:
+                normalized.append(
+                    chr(0x10000 + ((codepoint - 0xD800) << 10) + (low - 0xDC00))
+                )
+                index += 2
+                continue
+        normalized.append("\ufffd" if 0xD800 <= codepoint <= 0xDFFF else value[index])
+        index += 1
+    return "".join(normalized).strip()
 
 
 def _extract_account(source: str) -> str:
@@ -400,6 +419,8 @@ def _plain_text(value: str | None) -> str:
     normalized = re.sub(r"\s+", " ", value.replace("\xa0", " "))
     escaped = normalized.replace("\\", "\\\\")
     escaped = re.sub(r"([`*_\[\]<>#])", r"\\\1", escaped)
+    if re.fullmatch(r"\s*(?:-\s*){3,}", escaped):
+        escaped = escaped.replace("-", r"\-")
     escaped = re.sub(r"^(\s*)([-+])(?=\s)", r"\1\\\2", escaped)
     return re.sub(r"^(\s*)(\d+)([.)])(?=\s)", r"\1\2\\\3", escaped)
 

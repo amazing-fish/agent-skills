@@ -137,6 +137,29 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
 
         self.assertIn("invalidate_asset_cache(output_dir)", self.script)
 
+    def test_default_cache_is_allowed_when_profile_directory_is_cwd(self):
+        module = _load_fetch_module()
+        with tempfile.TemporaryDirectory() as temporary:
+            profile = Path(temporary)
+            local_app_data = profile / "AppData" / "Local"
+            with (
+                mock.patch.dict(
+                    module.os.environ,
+                    {"LOCALAPPDATA": str(local_app_data)},
+                    clear=False,
+                ),
+                mock.patch.object(module.Path, "cwd", return_value=profile),
+            ):
+                output_dir = module.choose_output_dir("safe-sn", None)
+                self.assertEqual(
+                    (local_app_data / "mp-article-cache" / "safe-sn").resolve(),
+                    output_dir,
+                )
+
+                with self.assertRaises(module.FetchError) as raised:
+                    module.choose_output_dir("safe-sn", profile / "explicit")
+                self.assertEqual("PARSE_FAILED", raised.exception.code)
+
     def test_error_markers_are_scoped_to_missing_or_invalid_content(self):
         tree = ast.parse(self.script)
         parse_article = next(
@@ -180,6 +203,14 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         self.assertTrue(rendered.endswith("+08:00"))
         self.assertNotIn("ZoneInfo", self.script)
 
+    def test_js_string_decoder_combines_utf16_surrogate_pairs(self):
+        module = _load_fetch_module()
+
+        decoded = module._decode_js_string(r"CSDN \uD83D\uDE00")
+        self.assertEqual("CSDN 😀", decoded)
+        self.assertEqual(b"CSDN \xf0\x9f\x98\x80", decoded.encode("utf-8"))
+        self.assertEqual("\ufffd", module._decode_js_string(r"\uD83D"))
+
     def test_plain_text_escapes_markdown_without_escaping_converter_markup(self):
         module = _load_fetch_module()
 
@@ -187,6 +218,8 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             ("# literal", r"\# literal"),
             ("1. version", r"1\. version"),
             ("> quoted", r"\> quoted"),
+            ("---", r"\-\-\-"),
+            ("- - -", r"\- \- \-"),
             ("*stars* and [brackets]", r"\*stars\* and \[brackets\]"),
         ):
             with self.subTest(source=source):
@@ -230,6 +263,8 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "Marker phrases inside a non-empty `div#js_content` are article text",
             "stock Windows Python does not need an external IANA timezone database",
             "Plain article text escapes Markdown control syntax",
+            "default `%LOCALAPPDATA%` cache remains valid",
+            "Valid UTF-16 surrogate pairs become one supplementary Unicode character",
         ):
             with self.subTest(required_output_contract=required_output_contract):
                 self.assertIn(required_output_contract, self.contract)

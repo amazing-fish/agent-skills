@@ -24,7 +24,7 @@ Successful output contains:
 - `raw.html`: exact response bytes used for parsing. This file is never written to stdout.
 - `assets/`: created only when `--assets` is requested. Successfully downloaded body images are referenced with relative POSIX-style paths from `article.md`.
 
-The script rejects an explicit `--out` inside the current working directory or a detected Git worktree.
+The script rejects an explicit `--out` inside the current working directory or any output inside a detected Git worktree. The default `%LOCALAPPDATA%` cache remains valid when PowerShell starts in the user-profile directory, even though that directory is an ancestor of `%LOCALAPPDATA%`.
 
 ## Stdout
 
@@ -111,4 +111,6 @@ A successful article refresh invalidates the existing `assets/` directory before
 
 Deletion, verification, rate-limit, and expired-link markers are evaluated only when the expected article body is missing or empty, or when the HTML cannot be parsed. Marker phrases inside a non-empty `div#js_content` are article text, not error-page evidence.
 
-Plain article text escapes Markdown control syntax before structural Markdown is emitted. Literal text such as `# heading`, `1. item`, or `> quote` therefore remains text instead of becoming a heading, list, or blockquote; converter-generated headings, lists, links, and emphasis retain their intended structure.
+Plain article text escapes Markdown control syntax before structural Markdown is emitted. Literal text such as `# heading`, `1. item`, `> quote`, or `---` therefore remains text instead of becoming a heading, list, blockquote, or thematic break; converter-generated headings, lists, links, and emphasis retain their intended structure.
+
+JavaScript Unicode escapes in metadata are decoded before UTF-8 publication. Valid UTF-16 surrogate pairs become one supplementary Unicode character; isolated surrogate code points become the Unicode replacement character instead of making `article.md` unwritable.
