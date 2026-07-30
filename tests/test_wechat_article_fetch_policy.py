@@ -215,15 +215,29 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         module = _load_fetch_module()
 
         class Image:
+            tag = "img"
+            text = None
+            tail = None
+
             def get(self, name):
                 return {"data-src": " ", "src": "//mmbiz.qpic.cn/poster.jpg"}.get(name)
 
+            def __iter__(self):
+                return iter(())
+
         class Content:
+            tag = "div"
+            text = None
+            tail = None
+
             def text_content(self):
                 return ""
 
             def xpath(self, expression):
                 return [Image()] if expression == ".//img" else []
+
+            def __iter__(self):
+                return iter((Image(),))
 
         class Document:
             def xpath(self, expression, **kwargs):
@@ -260,6 +274,71 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "\n\n![](https://mmbiz.qpic.cn/poster.jpg)\n\n",
             module.MarkdownConverter({})._render_image(Image()),
         )
+
+    def test_skipped_subtrees_do_not_make_an_empty_body_renderable(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def __init__(self, tag, text=None, children=(), attrs=None, tail=None):
+                self.tag = tag
+                self.text = text
+                self.tail = tail
+                self.children = list(children)
+                self.attrs = attrs or {}
+
+            def __iter__(self):
+                return iter(self.children)
+
+            def get(self, name):
+                return self.attrs.get(name)
+
+            def itertext(self):
+                if self.text:
+                    yield self.text
+                for child in self.children:
+                    yield from child.itertext()
+                    if child.tail:
+                        yield child.tail
+
+        content = Node(
+            "div",
+            children=[
+                Node("script", "placeholder"),
+                Node(
+                    "noscript",
+                    children=[
+                        Node(
+                            "img",
+                            attrs={"src": "https://mmbiz.qpic.cn/fallback.jpg"},
+                        )
+                    ],
+                ),
+                Node(
+                    "pre",
+                    children=[
+                        Node(
+                            "img",
+                            attrs={"src": "https://mmbiz.qpic.cn/code-example.jpg"},
+                        )
+                    ],
+                ),
+            ],
+        )
+
+        class Document:
+            def xpath(self, expression, **kwargs):
+                return [content] if expression == "//div[@id='js_content']" else []
+
+        with mock.patch.object(
+            module.lxml_html,
+            "fromstring",
+            return_value=Document(),
+            create=True,
+        ):
+            with self.assertRaises(module.FetchError) as raised:
+                module.parse_article(b"<html></html>")
+
+        self.assertEqual("EMPTY_CONTENT", raised.exception.code)
 
     def test_plain_text_escapes_markdown_without_escaping_converter_markup(self):
         module = _load_fetch_module()
@@ -471,6 +550,52 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             rendered,
         )
 
+    def test_nested_table_rows_are_not_duplicated_in_outer_table(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def __init__(self, tag, text=None, children=()):
+                self.tag = tag
+                self.text = text
+                self.tail = None
+                self.children = list(children)
+
+            def __iter__(self):
+                return iter(self.children)
+
+            def xpath(self, expression):
+                if expression != ".//tr":
+                    return []
+                rows = []
+
+                def collect(node):
+                    for child in node:
+                        if child.tag == "tr":
+                            rows.append(child)
+                        collect(child)
+
+                collect(self)
+                return rows
+
+        nested = Node(
+            "table",
+            children=[Node("tr", children=[Node("td", "inner")])],
+        )
+        outer = Node(
+            "table",
+            children=[
+                Node(
+                    "tr",
+                    children=[Node("td", "outer", children=[nested])],
+                )
+            ],
+        )
+        rendered = module.MarkdownConverter({})._render_table(outer)
+        lines = rendered.strip().splitlines()
+
+        self.assertEqual(3, len(lines))
+        self.assertEqual(1, rendered.count("inner"))
+
     def test_non_image_200_response_is_not_cached_as_asset(self):
         module = _load_fetch_module()
 
@@ -505,6 +630,40 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             self.assertEqual([], list(assets_dir.iterdir()))
             self.assertTrue(session.response.closed)
 
+    def test_empty_image_payload_is_not_cached_as_asset(self):
+        module = _load_fetch_module()
+
+        class Response:
+            status_code = 200
+            headers = {"Content-Type": "image/jpeg"}
+            content = b""
+
+            def close(self):
+                self.closed = True
+
+        class Session:
+            def __init__(self):
+                self.response = Response()
+
+            def get(self, *args, **kwargs):
+                return self.response
+
+        with tempfile.TemporaryDirectory() as temporary:
+            session = Session()
+            assets_dir = Path(temporary) / "assets"
+            asset_map, warnings = module.download_assets(
+                session,
+                ["https://mmbiz.qpic.cn/empty.jpg"],
+                assets_dir,
+                reuse_existing=False,
+            )
+
+            self.assertEqual({}, asset_map)
+            self.assertEqual(1, len(warnings))
+            self.assertIn("empty response body", warnings[0])
+            self.assertEqual([], list(assets_dir.iterdir()))
+            self.assertTrue(session.response.closed)
+
     def test_network_cache_and_provenance_contracts_remain_explicit(self):
         for required_script_contract in (
             "TIMEOUT_SECONDS = 30",
@@ -530,8 +689,11 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "default `%LOCALAPPDATA%` cache remains valid",
             "Valid UTF-16 surrogate pairs become one supplementary Unicode character",
             "known non-image `Content-Type` is an image failure",
+            "empty image payload is an image failure",
+            "Skipped subtrees do not contribute",
             "Nested list rows are indented to the parent marker's content column",
             "a `<td>`-only table receives an empty synthetic header",
+            "Nested table rows stay within",
             "visible text or at least one image URL",
             "prefer `data-src` and fall back to `src`",
             "`~~~`, or `~~text~~`",

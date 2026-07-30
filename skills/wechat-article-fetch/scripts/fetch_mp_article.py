@@ -334,11 +334,44 @@ def _normalize_image_url(value: str) -> str:
     return value
 
 
+def _tag_name(node: Any) -> str:
+    tag = node.tag
+    if not isinstance(tag, str):
+        return ""
+    tag = tag.rsplit("}", 1)[-1].lower()
+    return tag.rsplit(":", 1)[-1]
+
+
 def _image_source(image: Any) -> str:
     lazy_source = _normalize_image_url(str(image.get("data-src") or ""))
     if lazy_source:
         return lazy_source
     return _normalize_image_url(str(image.get("src") or ""))
+
+
+def _renderable_text_content(node: Any) -> str:
+    pieces = [str(node.text or "")]
+    for child in node:
+        tag = _tag_name(child)
+        if tag in {"pre", "code"}:
+            pieces.append("".join(str(value) for value in child.itertext()))
+        elif tag and tag not in SKIPPED_TAGS:
+            pieces.append(_renderable_text_content(child))
+        pieces.append(str(child.tail or ""))
+    return "".join(pieces)
+
+
+def _renderable_image_urls(node: Any) -> list[str]:
+    image_urls: list[str] = []
+    for child in node:
+        tag = _tag_name(child)
+        if not tag or tag in SKIPPED_TAGS:
+            continue
+        if tag == "img" and (source := _image_source(child)):
+            image_urls.append(source)
+        if tag not in {"pre", "code"}:
+            image_urls.extend(_renderable_image_urls(child))
+    return image_urls
 
 
 def parse_article(raw_html: bytes) -> Article:
@@ -354,13 +387,9 @@ def parse_article(raw_html: bytes) -> Article:
         detect_page_error(raw_html)
         raise FetchError("EMPTY_CONTENT", "No div#js_content article body was found.")
     content = contents[0]
-    visible_text = content.text_content()
+    visible_text = _renderable_text_content(content)
     char_count = len(re.sub(r"\s+", "", visible_text))
-    image_urls = [
-        value
-        for image in content.xpath(".//img")
-        if (value := _image_source(image))
-    ]
+    image_urls = _renderable_image_urls(content)
     if char_count == 0 and not image_urls:
         detect_page_error(raw_html)
         raise FetchError("EMPTY_CONTENT", "The div#js_content article body is empty.")
@@ -409,14 +438,6 @@ def parse_article(raw_html: bytes) -> Article:
         image_urls=image_urls,
         content=content,
     )
-
-
-def _tag_name(node: Any) -> str:
-    tag = node.tag
-    if not isinstance(tag, str):
-        return ""
-    tag = tag.rsplit("}", 1)[-1].lower()
-    return tag.rsplit(":", 1)[-1]
 
 
 def _plain_text(value: str | None) -> str:
@@ -585,7 +606,20 @@ class MarkdownConverter:
 
     def _render_table(self, node: Any) -> str:
         rows: list[tuple[list[str], bool]] = []
-        for row in node.xpath(".//tr"):
+        table_rows: list[Any] = []
+
+        def collect_rows(parent: Any) -> None:
+            for child in parent:
+                tag = _tag_name(child)
+                if tag == "table":
+                    continue
+                if tag == "tr":
+                    table_rows.append(child)
+                    continue
+                collect_rows(child)
+
+        collect_rows(node)
+        for row in table_rows:
             cells = [
                 cell
                 for cell in row
@@ -741,9 +775,15 @@ def download_assets(
                     "NETWORK",
                     f"Image request returned non-image Content-Type {content_type}.",
                 )
+            payload = response.content
+            if not payload:
+                raise FetchError(
+                    "NETWORK",
+                    "Image request returned an empty response body.",
+                )
             extension = _image_extension(response, url)
             destination = assets_dir / f"{index:03d}{extension}"
-            atomic_write_bytes(destination, response.content)
+            atomic_write_bytes(destination, payload)
             asset_map[url] = f"assets/{destination.name}"
         except (FetchError, requests.RequestException, OSError) as exc:
             warnings.append(f"Image download failed: {url} ({exc})")
