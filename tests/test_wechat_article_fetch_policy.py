@@ -480,6 +480,20 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         for node, expected in examples:
             with self.subTest(expected=expected):
                 self.assertEqual(expected, converter._render_node(node))
+        self.assertEqual(
+            "\n\n- 1\\. item\n\n",
+            converter._render_node(
+                Node(
+                    "ul",
+                    children=[
+                        Node(
+                            "li",
+                            children=[Node("span", "1", tail=". item")],
+                        )
+                    ],
+                )
+            ),
+        )
 
     def test_inline_markup_preserves_boundary_whitespace(self):
         module = _load_fetch_module()

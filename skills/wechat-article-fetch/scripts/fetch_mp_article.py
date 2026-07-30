@@ -797,18 +797,29 @@ class MarkdownConverter:
         items = [child for child in node if _tag_name(child) == "li"]
         next_number = _integer_attribute(node, "start", 1) if ordered else 1
         for item in items:
-            body_parts = [_plain_text(item.text)]
+            body_parts: list[str] = []
+            inline_parts = [_plain_text(item.text)]
+
+            def flush_inline() -> None:
+                if inline_parts:
+                    body_parts.append(
+                        _escape_plain_line_markers("".join(inline_parts))
+                    )
+                    inline_parts.clear()
+
             for child in item:
                 child_tag = _tag_name(child)
                 if child_tag in {"ul", "ol"}:
+                    flush_inline()
                     nested = self._render_list(
                         child,
                         ordered=child_tag == "ol",
                     ).strip("\n")
                     body_parts.append(f"\n{nested}\n")
                 else:
-                    body_parts.append(self._render_node(child))
-                body_parts.append(_plain_text(child.tail))
+                    inline_parts.append(self._render_node(child))
+                inline_parts.append(_plain_text(child.tail))
+            flush_inline()
             body = self._cleanup("".join(body_parts)).strip()
             if ordered:
                 item_number = _integer_attribute(item, "value", next_number)
