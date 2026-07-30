@@ -552,6 +552,28 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             f"[https://example.com/a\\]b)c d?q=(x)]({destination})",
             converter._render_node(Node("a", "", {"href": href})),
         )
+        article_converter = module.MarkdownConverter(
+            {},
+            "https://mp.weixin.qq.com/s/example",
+        )
+        self.assertEqual(
+            "[next](https://mp.weixin.qq.com/s/next)",
+            article_converter._render_node(
+                Node("a", "next", {"href": "/s/next"}),
+            ),
+        )
+        self.assertEqual(
+            "[related](https://mp.weixin.qq.com/s/related.html)",
+            article_converter._render_node(
+                Node("a", "related", {"href": "related.html"}),
+            ),
+        )
+        self.assertEqual(
+            "[section](#section)",
+            article_converter._render_node(
+                Node("a", "section", {"href": "#section"}),
+            ),
+        )
 
         source = "https://mmbiz.qpic.cn/a)b c.png"
         converter = module.MarkdownConverter(
@@ -735,152 +757,6 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             rendered,
         )
 
-    def test_table_colspan_preserves_logical_column_positions(self):
-        module = _load_fetch_module()
-
-        class Node:
-            def __init__(self, tag, text=None, children=(), attrs=None):
-                self.tag = tag
-                self.text = text
-                self.tail = None
-                self.children = list(children)
-                self.attrs = attrs or {}
-
-            def __iter__(self):
-                return iter(self.children)
-
-            def get(self, name):
-                return self.attrs.get(name)
-
-        table = Node(
-            "table",
-            children=[
-                Node(
-                    "tr",
-                    children=[
-                        Node("th", "H1"),
-                        Node("th", "H2"),
-                        Node("th", "H3"),
-                    ],
-                ),
-                Node(
-                    "tr",
-                    children=[
-                        Node("td", "A", attrs={"colspan": "2"}),
-                        Node("td", "B"),
-                    ],
-                ),
-            ],
-        )
-        rendered = module.MarkdownConverter({})._render_table(table)
-
-        self.assertEqual(
-            "\n\n| H1 | H2 | H3 |\n| --- | --- | --- |\n"
-            "| A |  | B |\n\n",
-            rendered,
-        )
-
-    def test_table_spans_are_bounded_and_rowspans_reserve_columns(self):
-        module = _load_fetch_module()
-
-        class Node:
-            def __init__(self, tag, text=None, children=(), attrs=None):
-                self.tag = tag
-                self.text = text
-                self.tail = None
-                self.children = list(children)
-                self.attrs = attrs or {}
-
-            def __iter__(self):
-                return iter(self.children)
-
-            def get(self, name):
-                return self.attrs.get(name)
-
-        rowspans = Node(
-            "table",
-            children=[
-                Node(
-                    "tr",
-                    children=[
-                        Node("td", "A", attrs={"rowspan": "2"}),
-                        Node("td", "B"),
-                    ],
-                ),
-                Node("tr", children=[Node("td", "C")]),
-            ],
-        )
-        rendered_rowspans = module.MarkdownConverter({})._render_table(rowspans)
-        self.assertEqual(
-            "\n\n|  |  |\n| --- | --- |\n"
-            "| A | B |\n|  | C |\n\n",
-            rendered_rowspans,
-        )
-
-        oversized = Node(
-            "table",
-            children=[
-                Node(
-                    "tr",
-                    children=[
-                        Node("td", "bounded", attrs={"colspan": "1000000000"})
-                    ],
-                )
-            ],
-        )
-        rendered_oversized = module.MarkdownConverter({})._render_table(oversized)
-        data_cells = rendered_oversized.strip().splitlines()[2].strip("|").split("|")
-        self.assertEqual(module.MAX_TABLE_COLUMNS, len(data_cells))
-
-    def test_nested_table_rows_are_not_duplicated_in_outer_table(self):
-        module = _load_fetch_module()
-
-        class Node:
-            def __init__(self, tag, text=None, children=()):
-                self.tag = tag
-                self.text = text
-                self.tail = None
-                self.children = list(children)
-
-            def __iter__(self):
-                return iter(self.children)
-
-            def get(self, name):
-                return None
-
-            def xpath(self, expression):
-                if expression != ".//tr":
-                    return []
-                rows = []
-
-                def collect(node):
-                    for child in node:
-                        if child.tag == "tr":
-                            rows.append(child)
-                        collect(child)
-
-                collect(self)
-                return rows
-
-        nested = Node(
-            "table",
-            children=[Node("tr", children=[Node("td", "inner")])],
-        )
-        outer = Node(
-            "table",
-            children=[
-                Node(
-                    "tr",
-                    children=[Node("td", "outer", children=[nested])],
-                )
-            ],
-        )
-        rendered = module.MarkdownConverter({})._render_table(outer)
-        lines = rendered.strip().splitlines()
-
-        self.assertEqual(3, len(lines))
-        self.assertEqual(1, rendered.count("inner"))
-
     def test_fenced_code_preserves_trailing_spaces_and_tabs(self):
         module = _load_fetch_module()
 
@@ -899,7 +775,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             rendered,
         )
 
-    def test_article_fetch_requires_https_and_revalidates_redirects(self):
+    def test_article_fetch_requires_https_and_uses_native_redirects(self):
         module = _load_fetch_module()
 
         with self.assertRaises(module.FetchError) as rejected:
@@ -907,8 +783,12 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         self.assertEqual("NOT_MP_URL", rejected.exception.code)
 
         class Response:
-            status_code = 302
-            headers = {"Location": "https://mp.weixin.qq.com/s/redirected"}
+            status_code = 200
+            headers = {}
+
+            def iter_content(self, *, chunk_size):
+                self.chunk_size = chunk_size
+                return iter((b"<html></html>",))
 
             def close(self):
                 self.closed = True
@@ -922,35 +802,16 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
                 self.calls.append((args, kwargs))
                 return self.response
 
-        resolved_addresses = iter(("93.184.216.34", "169.254.169.254"))
-
-        def resolve(hostname, port, *, type):
-            self.assertEqual("mp.weixin.qq.com", hostname)
-            return [
-                (
-                    module.socket.AF_INET,
-                    module.socket.SOCK_STREAM,
-                    6,
-                    "",
-                    (next(resolved_addresses), port),
-                )
-            ]
-
         session = Session()
-        with (
-            mock.patch.object(module.socket, "getaddrinfo", side_effect=resolve),
-            self.assertRaises(module.FetchError) as redirected,
-        ):
-            module.fetch_html(
-                session,
-                "https://mp.weixin.qq.com/s/example",
-            )
+        payload = module.fetch_html(
+            session,
+            "https://mp.weixin.qq.com/s/example",
+        )
 
-        self.assertEqual("NETWORK", redirected.exception.code)
-        self.assertIn("non-public article destination", redirected.exception.message)
+        self.assertEqual(b"<html></html>", payload)
         self.assertEqual(1, len(session.calls))
         self.assertTrue(session.calls[0][1]["stream"])
-        self.assertFalse(session.calls[0][1]["allow_redirects"])
+        self.assertTrue(session.calls[0][1]["allow_redirects"])
         self.assertTrue(session.response.closed)
 
     def test_oversized_streaming_article_is_rejected(self):
@@ -976,10 +837,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
                 self.calls.append((args, kwargs))
                 return self.response
 
-        with (
-            mock.patch.object(module, "_validate_public_article_url"),
-            mock.patch.object(module, "MAX_ARTICLE_BYTES", 8),
-        ):
+        with mock.patch.object(module, "MAX_ARTICLE_BYTES", 8):
             session = Session()
             with self.assertRaises(module.FetchError) as oversized:
                 module.fetch_html(
@@ -991,87 +849,6 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         self.assertIn("8-byte limit", oversized.exception.message)
         self.assertEqual(module.ARTICLE_CHUNK_BYTES, session.response.chunk_size)
         self.assertTrue(session.response.closed)
-
-    def test_read_deadline_watchdog_closes_the_active_response(self):
-        module = _load_fetch_module()
-
-        class Response:
-            headers = {}
-
-            def __init__(self):
-                self.read_started = module.threading.Event()
-                self.closed_event = module.threading.Event()
-                response = self
-
-                class TransportSocket:
-                    def shutdown(self, how):
-                        self.shutdown_mode = how
-                        response.closed_event.set()
-
-                    def close(self):
-                        self.closed = True
-
-                self.transport_socket = TransportSocket()
-                self.raw = types.SimpleNamespace(
-                    _connection=types.SimpleNamespace(sock=self.transport_socket),
-                    _fp=None,
-                )
-
-            def iter_content(self, *, chunk_size):
-                self.read_started.set()
-                if not self.closed_event.wait(1):
-                    raise AssertionError("watchdog did not close the blocked response")
-                raise module.requests.RequestException("response closed")
-
-            def close(self):
-                self.closed = True
-
-        response = Response()
-
-        class CoordinatedTimer:
-            instance = None
-
-            def __init__(self, interval, callback):
-                self.interval = interval
-                self.callback = callback
-                self.daemon = False
-                self.cancelled = False
-                self.failure = None
-                CoordinatedTimer.instance = self
-
-            def start(self):
-                def run():
-                    if not response.read_started.wait(1):
-                        self.failure = "body iteration never started"
-                        response.closed_event.set()
-                        return
-                    self.callback()
-
-                self.thread = module.threading.Thread(target=run, daemon=True)
-                self.thread.start()
-
-            def cancel(self):
-                self.cancelled = True
-                self.thread.join(timeout=1)
-
-        with (
-            mock.patch.object(module.threading, "Timer", CoordinatedTimer),
-            self.assertRaises(module.FetchError) as expired,
-        ):
-            module._read_bounded_article(response)
-
-        self.assertEqual("NETWORK", expired.exception.code)
-        self.assertIn("read deadline", expired.exception.message)
-        self.assertTrue(response.closed)
-        self.assertEqual(
-            module.socket.SHUT_RDWR,
-            response.transport_socket.shutdown_mode,
-        )
-        self.assertTrue(response.transport_socket.closed)
-        self.assertEqual(module.TIMEOUT_SECONDS, CoordinatedTimer.instance.interval)
-        self.assertTrue(CoordinatedTimer.instance.daemon)
-        self.assertTrue(CoordinatedTimer.instance.cancelled)
-        self.assertIsNone(CoordinatedTimer.instance.failure)
 
     def test_emit_json_uses_utf8_bytes_with_legacy_text_encoding(self):
         module = _load_fetch_module()
@@ -1103,6 +880,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             status_code = 200
             headers = {"Content-Type": "text/html; charset=utf-8"}
             content = b"<html>verification required</html>"
+            url = "https://mmbiz.qpic.cn/example.jpg"
 
             def close(self):
                 self.closed = True
@@ -1116,7 +894,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary, mock.patch.object(
             module,
-            "_validate_public_asset_url",
+            "_validate_asset_url",
         ):
             session = Session()
             assets_dir = Path(temporary) / "assets"
@@ -1139,6 +917,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         class Response:
             status_code = 200
             headers = {"Content-Type": "image/jpeg"}
+            url = "https://mmbiz.qpic.cn/empty.jpg"
 
             def iter_content(self, *, chunk_size):
                 self.chunk_size = chunk_size
@@ -1156,7 +935,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temporary, mock.patch.object(
             module,
-            "_validate_public_asset_url",
+            "_validate_asset_url",
         ):
             session = Session()
             assets_dir = Path(temporary) / "assets"
@@ -1173,12 +952,26 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             self.assertEqual([], list(assets_dir.iterdir()))
             self.assertTrue(session.response.closed)
 
-    def test_asset_download_rejects_private_initial_and_redirect_destinations(self):
+    def test_asset_download_validates_initial_url_and_uses_native_redirects(self):
         module = _load_fetch_module()
 
+        for url in (
+            "http://mmbiz.qpic.cn/image.jpg",
+            "https://user@example.com/image.jpg",
+            "https://mmbiz.qpic.cn:444/image.jpg",
+            "https://example.com/image.jpg",
+        ):
+            with self.subTest(url=url), self.assertRaises(module.FetchError):
+                module._validate_asset_url(url)
+
         class Response:
-            status_code = 302
-            headers = {"Location": "https://mmbiz.qpic.cn/redirected.jpg"}
+            status_code = 200
+            headers = {"Content-Type": "image/jpeg"}
+            url = "https://mmbiz.qpic.cn/redirected.jpg"
+
+            def iter_content(self, *, chunk_size):
+                self.chunk_size = chunk_size
+                return iter((b"image",))
 
             def close(self):
                 self.closed = True
@@ -1192,49 +985,38 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
                 self.calls.append((args, kwargs))
                 return self.response
 
-        resolved_addresses = iter(("93.184.216.34", "169.254.169.254"))
+        with tempfile.TemporaryDirectory() as temporary:
+            session = Session()
+            asset_map, warnings = module.download_assets(
+                session,
+                ["https://mmbiz.qpic.cn/redirect.jpg"],
+                Path(temporary) / "assets",
+                reuse_existing=False,
+            )
 
-        def resolve(hostname, port, *, type):
-            self.assertEqual("mmbiz.qpic.cn", hostname)
-            return [
-                (
-                    module.socket.AF_INET,
-                    module.socket.SOCK_STREAM,
-                    6,
-                    "",
-                    (next(resolved_addresses), port),
-                )
-            ]
+            self.assertEqual(
+                {"https://mmbiz.qpic.cn/redirect.jpg": "assets/001.jpg"},
+                asset_map,
+            )
+            self.assertEqual([], warnings)
+            self.assertEqual(1, len(session.calls))
+            self.assertTrue(session.calls[0][1]["stream"])
+            self.assertTrue(session.calls[0][1]["allow_redirects"])
+            self.assertTrue(session.response.closed)
 
-        with mock.patch.object(module.socket, "getaddrinfo", side_effect=resolve):
-            with tempfile.TemporaryDirectory() as temporary:
-                session = Session()
-                asset_map, warnings = module.download_assets(
-                    session,
-                    ["https://127.0.0.1/private.jpg"],
-                    Path(temporary) / "assets",
-                    reuse_existing=False,
-                )
+    def test_image_extension_prefers_negotiated_avif_content_type(self):
+        module = _load_fetch_module()
 
-                self.assertEqual({}, asset_map)
-                self.assertEqual([], session.calls)
-                self.assertIn("trusted WeChat image host", warnings[0])
+        class Response:
+            headers = {"Content-Type": "image/avif"}
 
-            with tempfile.TemporaryDirectory() as temporary:
-                session = Session()
-                asset_map, warnings = module.download_assets(
-                    session,
-                    ["https://mmbiz.qpic.cn/redirect.jpg"],
-                    Path(temporary) / "assets",
-                    reuse_existing=False,
-                )
-
-                self.assertEqual({}, asset_map)
-                self.assertEqual(1, len(session.calls))
-                self.assertTrue(session.calls[0][1]["stream"])
-                self.assertFalse(session.calls[0][1]["allow_redirects"])
-                self.assertTrue(session.response.closed)
-                self.assertIn("non-public image destination", warnings[0])
+        self.assertEqual(
+            ".avif",
+            module._image_extension(
+                Response(),
+                "https://mmbiz.qpic.cn/image.jpg",
+            ),
+        )
 
     def test_oversized_streaming_image_is_not_cached_as_asset(self):
         module = _load_fetch_module()
@@ -1242,6 +1024,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         class Response:
             status_code = 200
             headers = {"Content-Type": "image/jpeg"}
+            url = "https://mmbiz.qpic.cn/oversized.jpg"
 
             def iter_content(self, *, chunk_size):
                 self.chunk_size = chunk_size
@@ -1259,7 +1042,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as temporary,
-            mock.patch.object(module, "_validate_public_asset_url"),
+            mock.patch.object(module, "_validate_asset_url"),
             mock.patch.object(module, "MAX_ASSET_BYTES", 8),
         ):
             session = Session()
@@ -1283,11 +1066,10 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "TIMEOUT_SECONDS = 30",
             "RETRY_DELAYS = (1, 2, 4)",
             "MAX_ARTICLE_BYTES = 10 * 1024 * 1024",
-            "MAX_ARTICLE_REDIRECTS = 5",
             'TRUSTED_ARTICLE_HOSTS = frozenset({"mp.weixin.qq.com"})',
             "MAX_ASSET_BYTES = 20 * 1024 * 1024",
-            "MAX_ASSET_REDIRECTS = 5",
             'TRUSTED_ASSET_HOSTS = frozenset({"mmbiz.qpic.cn", "mp.weixin.qq.com"})',
+            "allow_redirects=True",
             "cached=cache_hit",
             '"cached": cached',
             'f"原文链接：{source_url}"',
@@ -1304,7 +1086,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "written as UTF-8 bytes",
             "performs no article network request",
             "Only HTTPS article URLs",
-            "Article response bodies are streamed",
+            "Article response bodies use Requests' 30-second timeout and are streamed",
             "10 MiB",
             "refresh invalidates the existing `assets/` directory",
             "Marker phrases inside a non-empty `div#js_content` are article text",
@@ -1315,17 +1097,15 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "Valid UTF-16 surrogate pairs become one supplementary Unicode character",
             "known non-image `Content-Type` is an image failure",
             "empty image payload is an image failure",
-            "public HTTPS destination",
+            "HTTPS on port 443",
             "trusted WeChat image hosts",
-            "every redirect target",
+            "Requests follows redirects",
             "20 MiB",
             "Skipped subtrees do not contribute",
             "Nested list rows are indented to the parent marker's content column",
             "a `<td>`-only table receives an empty synthetic header",
-            "`colspan` cells expand across their logical columns",
-            "Table spans are bounded",
-            "`rowspan` reserves occupied columns",
-            "Nested table rows stay within",
+            "Cell pipes are escaped",
+            "cell line breaks become `<br>`",
             "Fenced code preserves trailing spaces and tabs",
             "visible text or at least one image URL",
             "prefer `data-src` and fall back to `src`",
