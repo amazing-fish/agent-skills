@@ -417,6 +417,44 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             converter._render_node(paragraph),
         )
 
+    def test_markdown_destinations_escape_syntax_breaking_characters(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def __init__(self, tag, text=None, attrs=None):
+                self.tag = tag
+                self.text = text
+                self.tail = None
+                self.attrs = attrs or {}
+
+            def __iter__(self):
+                return iter(())
+
+            def get(self, name):
+                return self.attrs.get(name)
+
+        href = "https://example.com/a]b)c d?q=(x)"
+        destination = "https://example.com/a%5Db%29c%20d?q=%28x%29"
+        converter = module.MarkdownConverter({})
+
+        self.assertEqual(
+            f"[read]({destination})",
+            converter._render_node(Node("a", "read", {"href": href})),
+        )
+        self.assertEqual(
+            f"[https://example.com/a\\]b)c d?q=(x)]({destination})",
+            converter._render_node(Node("a", "", {"href": href})),
+        )
+
+        source = "https://mmbiz.qpic.cn/a)b c.png"
+        converter = module.MarkdownConverter(
+            {source: "assets/001 weird).png"},
+        )
+        self.assertEqual(
+            "\n\n![](assets/001%20weird%29.png)\n\n",
+            converter._render_node(Node("img", attrs={"data-src": source})),
+        )
+
     def test_nested_ordered_lists_indent_to_parent_content_column(self):
         module = _load_fetch_module()
 
@@ -812,6 +850,87 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         self.assertEqual(module.ARTICLE_CHUNK_BYTES, session.response.chunk_size)
         self.assertTrue(session.response.closed)
 
+    def test_read_deadline_watchdog_closes_the_active_response(self):
+        module = _load_fetch_module()
+
+        class Response:
+            headers = {}
+
+            def __init__(self):
+                self.read_started = module.threading.Event()
+                self.closed_event = module.threading.Event()
+                response = self
+
+                class TransportSocket:
+                    def shutdown(self, how):
+                        self.shutdown_mode = how
+                        response.closed_event.set()
+
+                    def close(self):
+                        self.closed = True
+
+                self.transport_socket = TransportSocket()
+                self.raw = types.SimpleNamespace(
+                    _connection=types.SimpleNamespace(sock=self.transport_socket),
+                    _fp=None,
+                )
+
+            def iter_content(self, *, chunk_size):
+                self.read_started.set()
+                if not self.closed_event.wait(1):
+                    raise AssertionError("watchdog did not close the blocked response")
+                raise module.requests.RequestException("response closed")
+
+            def close(self):
+                self.closed = True
+
+        response = Response()
+
+        class CoordinatedTimer:
+            instance = None
+
+            def __init__(self, interval, callback):
+                self.interval = interval
+                self.callback = callback
+                self.daemon = False
+                self.cancelled = False
+                self.failure = None
+                CoordinatedTimer.instance = self
+
+            def start(self):
+                def run():
+                    if not response.read_started.wait(1):
+                        self.failure = "body iteration never started"
+                        response.closed_event.set()
+                        return
+                    self.callback()
+
+                self.thread = module.threading.Thread(target=run, daemon=True)
+                self.thread.start()
+
+            def cancel(self):
+                self.cancelled = True
+                self.thread.join(timeout=1)
+
+        with (
+            mock.patch.object(module.threading, "Timer", CoordinatedTimer),
+            self.assertRaises(module.FetchError) as expired,
+        ):
+            module._read_bounded_article(response)
+
+        self.assertEqual("NETWORK", expired.exception.code)
+        self.assertIn("read deadline", expired.exception.message)
+        self.assertTrue(response.closed)
+        self.assertEqual(
+            module.socket.SHUT_RDWR,
+            response.transport_socket.shutdown_mode,
+        )
+        self.assertTrue(response.transport_socket.closed)
+        self.assertEqual(module.TIMEOUT_SECONDS, CoordinatedTimer.instance.interval)
+        self.assertTrue(CoordinatedTimer.instance.daemon)
+        self.assertTrue(CoordinatedTimer.instance.cancelled)
+        self.assertIsNone(CoordinatedTimer.instance.failure)
+
     def test_emit_json_uses_utf8_bytes_with_legacy_text_encoding(self):
         module = _load_fetch_module()
 
@@ -1049,6 +1168,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "Marker phrases inside a non-empty `div#js_content` are article text",
             "stock Windows Python does not need an external IANA timezone database",
             "Plain article text escapes Markdown control syntax",
+            "Markdown link and image destinations",
             "default `%LOCALAPPDATA%` cache remains valid",
             "Valid UTF-16 surrogate pairs become one supplementary Unicode character",
             "known non-image `Content-Type` is an image failure",

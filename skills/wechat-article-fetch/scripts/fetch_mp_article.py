@@ -12,12 +12,13 @@ import re
 import shutil
 import socket
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, unquote, urljoin, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urljoin, urlsplit
 
 import requests
 from lxml import etree
@@ -41,6 +42,7 @@ MAX_ASSET_REDIRECTS = 5
 TRUSTED_ASSET_HOSTS = frozenset({"mmbiz.qpic.cn"})
 TUNNEL_FAKE_IP_RANGE = ipaddress.ip_network("198.18.0.0/15")
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+MARKDOWN_DESTINATION_SAFE = ":/?#@!$&'*+,;=%-._~"
 CHINA_STANDARD_TIME = timezone(timedelta(hours=8), name="Asia/Shanghai")
 MAX_TABLE_COLUMNS = 128
 SN_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,160}\Z")
@@ -430,28 +432,85 @@ def _read_bounded_response(
                 f"{label.capitalize()} response exceeds the {max_bytes}-byte limit.",
             )
 
+    deadline_expired = threading.Event()
+
+    def expire_response() -> None:
+        deadline_expired.set()
+        raw_response = getattr(response, "raw", None)
+        connection = getattr(raw_response, "_connection", None)
+        connection_socket = getattr(connection, "sock", None)
+        http_response = getattr(raw_response, "_fp", None)
+        buffered_reader = getattr(http_response, "fp", None)
+        socket_io = getattr(buffered_reader, "raw", None)
+        file_socket = getattr(socket_io, "_sock", None)
+        closed_socket_ids: set[int] = set()
+        for active_socket in (connection_socket, file_socket):
+            if active_socket is None or id(active_socket) in closed_socket_ids:
+                continue
+            closed_socket_ids.add(id(active_socket))
+            try:
+                active_socket.shutdown(socket.SHUT_RDWR)
+            except (OSError, ValueError):
+                pass
+            try:
+                active_socket.close()
+            except OSError:
+                pass
+        try:
+            response.close()
+        except Exception:
+            # The deadline event remains authoritative if wrapper cleanup fails.
+            pass
+
+    deadline_timer = threading.Timer(TIMEOUT_SECONDS, expire_response)
+    deadline_timer.daemon = True
+    deadline_timer.start()
     payload = bytearray()
-    started_at = time.monotonic()
-    for chunk in response.iter_content(chunk_size=chunk_bytes):
-        if time.monotonic() - started_at > TIMEOUT_SECONDS:
+    try:
+        if deadline_expired.is_set():
             raise FetchError(
                 "NETWORK",
                 f"{label.capitalize()} response exceeded the "
                 f"{TIMEOUT_SECONDS}-second read deadline.",
             )
-        if not chunk:
-            continue
-        if not isinstance(chunk, bytes):
+        try:
+            for chunk in response.iter_content(chunk_size=chunk_bytes):
+                if deadline_expired.is_set():
+                    raise FetchError(
+                        "NETWORK",
+                        f"{label.capitalize()} response exceeded the "
+                        f"{TIMEOUT_SECONDS}-second read deadline.",
+                    )
+                if not chunk:
+                    continue
+                if not isinstance(chunk, bytes):
+                    raise FetchError(
+                        "NETWORK",
+                        f"{label.capitalize()} response yielded a non-byte chunk.",
+                    )
+                if len(payload) + len(chunk) > max_bytes:
+                    raise FetchError(
+                        "NETWORK",
+                        f"{label.capitalize()} response exceeds the "
+                        f"{max_bytes}-byte limit.",
+                    )
+                payload.extend(chunk)
+        except requests.RequestException as exc:
+            if deadline_expired.is_set():
+                raise FetchError(
+                    "NETWORK",
+                    f"{label.capitalize()} response exceeded the "
+                    f"{TIMEOUT_SECONDS}-second read deadline.",
+                ) from exc
+            raise
+        if deadline_expired.is_set():
             raise FetchError(
                 "NETWORK",
-                f"{label.capitalize()} response yielded a non-byte chunk.",
+                f"{label.capitalize()} response exceeded the "
+                f"{TIMEOUT_SECONDS}-second read deadline.",
             )
-        if len(payload) + len(chunk) > max_bytes:
-            raise FetchError(
-                "NETWORK",
-                f"{label.capitalize()} response exceeds the {max_bytes}-byte limit.",
-            )
-        payload.extend(chunk)
+    finally:
+        deadline_timer.cancel()
 
     if require_content and not payload:
         raise FetchError(
@@ -708,6 +767,10 @@ def _plain_text(value: str | None) -> str:
     return re.sub(r"^(\s*)(\d+)([.)])(?=\s)", r"\1\2\\\3", escaped)
 
 
+def _markdown_destination(value: str) -> str:
+    return quote(value, safe=MARKDOWN_DESTINATION_SAFE)
+
+
 def _integer_attribute(node: Any, name: str, default: int) -> int:
     value = node.get(name)
     if value is None:
@@ -787,10 +850,11 @@ class MarkdownConverter:
             href = str(node.get("href") or "").strip()
             if not href:
                 return content
+            destination = _markdown_destination(href)
             leading, label, trailing = _split_boundary_whitespace(content)
             if not label:
-                return f"[{href}]({href})"
-            return f"{leading}[{label}]({href}){trailing}"
+                return f"[{_plain_text(href)}]({destination})"
+            return f"{leading}[{label}]({destination}){trailing}"
         if tag == "code":
             return self._render_inline_code(node)
         if tag == "li":
@@ -803,7 +867,7 @@ class MarkdownConverter:
             return ""
         target = self.asset_map.get(source, source)
         alt = _plain_text(str(node.get("alt") or "")).strip()
-        return f"\n\n![{alt}]({target})\n\n"
+        return f"\n\n![{alt}]({_markdown_destination(target)})\n\n"
 
     def _render_pre(self, node: Any) -> str:
         code = "".join(node.itertext()).replace("\r\n", "\n").replace("\r", "\n")
