@@ -248,6 +248,82 @@ class SkillPolicyTests(unittest.TestCase):
             with self.subTest(required_policy=required_policy):
                 self.assertIn(required_policy, workflow)
 
+    def test_review_timer_summary_and_refresh_post_action_are_single_sourced(self):
+        workflow = (
+            ROOT / "skills" / "execute-github-issue-pr-workflow" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        review_cycle = workflow.split(
+            "For each new ready-for-review PR HEAD:",
+            1,
+        )[1].split("## Resolve findings", 1)[0]
+        branch_lines = {
+            label: next(
+                line.strip()
+                for line in review_cycle.splitlines()
+                if line.strip().startswith(f"- **{label}:**")
+            )
+            for label in (
+                "Passed",
+                "In progress",
+                "Not triggered",
+                "Findings or failures",
+            )
+        }
+
+        expected_branch_policies = {
+            "Passed": ("current Codex-bot 👍", "no actionable feedback"),
+            "In progress": ("do not mention the bot again",),
+            "Not triggered": (
+                "post `@codex review` once",
+                "return the comment URL",
+            ),
+            "Findings or failures": (
+                "fix in scope issues on the same branch",
+                "test, push",
+                "return the new commit URL",
+            ),
+        }
+        for label, required_fragments in expected_branch_policies.items():
+            with self.subTest(branch=label):
+                for fragment in required_fragments:
+                    self.assertIn(fragment, branch_lines[label])
+                for duplicated_post_action in (
+                    "one-shot 6-minute timer",
+                    "one-shot 6-minute review cycle",
+                ):
+                    self.assertNotIn(
+                        duplicated_post_action,
+                        branch_lines[label],
+                    )
+
+        common_post_action = (
+            "After any non-passed classification, end the refresh by setting "
+            "one new one-shot 6-minute timer under the contract above."
+        )
+        self.assertEqual(1, review_cycle.count(common_post_action))
+        self.assertGreater(
+            review_cycle.index(common_post_action),
+            max(review_cycle.index(line) for line in branch_lines.values()),
+        )
+
+        timer_summary = next(
+            line
+            for line in readme.splitlines()
+            if line.startswith("- 评审节拍：")
+        )
+        for required_summary in (
+            "一次性 6 分钟定时器",
+            "触发后刷新一次",
+            "目标本地时间",
+            "目标时区",
+            "已核验 next run",
+            "[workflow Skill](skills/execute-github-issue-pr-workflow/SKILL.md)",
+            "为事实来源",
+        ):
+            with self.subTest(required_summary=required_summary):
+                self.assertIn(required_summary, timer_summary)
+
     def test_github_diff_policy_is_links_only(self):
         skill = (
             ROOT / "skills" / "explain-diff-for-human-review" / "SKILL.md"
