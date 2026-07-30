@@ -536,11 +536,12 @@ class MarkdownConverter:
                 body_parts.append(_plain_text(child.tail))
             body = self._cleanup("".join(body_parts)).strip()
             marker = f"{index}. " if ordered else "- "
+            continuation = " " * len(marker)
             body_lines = body.splitlines() or [""]
             rows.append(marker + body_lines[0])
-            rows.extend("  " + line for line in body_lines[1:])
+            rows.extend(continuation + line for line in body_lines[1:])
             for nested in nested_parts:
-                rows.extend("  " + line for line in nested.splitlines())
+                rows.extend(continuation + line for line in nested.splitlines())
         rendered_rows = "\n".join(rows)
         return f"\n\n{rendered_rows}\n\n" if rows else ""
 
@@ -566,12 +567,14 @@ class MarkdownConverter:
 
         width = max(len(values) for values, _ in rows)
         normalized = [values + [""] * (width - len(values)) for values, _ in rows]
-        header = normalized[0]
+        first_row_is_header = rows[0][1]
+        header = normalized[0] if first_row_is_header else [""] * width
+        data_rows = normalized[1:] if first_row_is_header else normalized
         lines = [
             "| " + " | ".join(header) + " |",
             "| " + " | ".join("---" for _ in range(width)) + " |",
         ]
-        lines.extend("| " + " | ".join(values) + " |" for values in normalized[1:])
+        lines.extend("| " + " | ".join(values) + " |" for values in data_rows)
         rendered_lines = "\n".join(lines)
         return f"\n\n{rendered_lines}\n\n"
 
@@ -613,8 +616,12 @@ class MarkdownConverter:
         return "\n".join(cleaned).strip()
 
 
+def _response_content_type(response: requests.Response) -> str:
+    return response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+
+
 def _image_extension(response: requests.Response, url: str) -> str:
-    content_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
+    content_type = _response_content_type(response)
     by_type = {
         "image/jpeg": ".jpg",
         "image/jpg": ".jpg",
@@ -686,6 +693,12 @@ def download_assets(
                 raise FetchError(
                     "NETWORK",
                     f"Image request returned HTTP {response.status_code}.",
+                )
+            content_type = _response_content_type(response)
+            if content_type and not content_type.startswith("image/"):
+                raise FetchError(
+                    "NETWORK",
+                    f"Image request returned non-image Content-Type {content_type}.",
                 )
             extension = _image_extension(response, url)
             destination = assets_dir / f"{index:03d}{extension}"

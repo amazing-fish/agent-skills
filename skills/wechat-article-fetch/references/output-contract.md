@@ -105,7 +105,7 @@ warnings: []
 
 A normal call is a cache hit only when both `raw.html` and `article.md` exist. The parser reuses `raw.html`, emits `cached: true`, and performs no article network request. `--refresh` bypasses the cache.
 
-If `--assets` is added to a cache that does not already contain the requested images, image downloads may still make network requests. Image failures do not fail the article; they remain remote Markdown URLs and add strings to `warnings`.
+If `--assets` is added to a cache that does not already contain the requested images, image downloads may still make network requests. Image failures do not fail the article; they remain remote Markdown URLs and add strings to `warnings`. An HTTP 200 response with a known non-image `Content-Type` is an image failure and is never cached as an asset.
 
 A successful article refresh invalidates the existing `assets/` directory before publishing the new `raw.html`, even when `--assets` is omitted. This prevents ordinal filenames from being reused for changed or reordered image URLs.
 
@@ -114,3 +114,5 @@ Deletion, verification, rate-limit, and expired-link markers are evaluated only 
 Plain article text escapes Markdown control syntax before structural Markdown is emitted. Literal text such as `# heading`, `1. item`, `> quote`, or `---` therefore remains text instead of becoming a heading, list, blockquote, or thematic break; converter-generated headings, lists, links, and emphasis retain their intended structure.
 
 JavaScript Unicode escapes in metadata are decoded before UTF-8 publication. Valid UTF-16 surrogate pairs become one supplementary Unicode character; isolated surrogate code points become the Unicode replacement character instead of making `article.md` unwritable.
+
+Nested list rows are indented to the parent marker's content column. A table whose first row contains `<th>` cells uses that row as its GFM header; a `<td>`-only table receives an empty synthetic header so every source row remains data.

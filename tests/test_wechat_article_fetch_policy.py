@@ -241,6 +241,94 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             converter._render_node(Node("h1", "# literal")),
         )
 
+    def test_nested_ordered_lists_indent_to_parent_content_column(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def __init__(self, tag, text=None, children=()):
+                self.tag = tag
+                self.text = text
+                self.tail = None
+                self.children = list(children)
+
+            def __iter__(self):
+                return iter(self.children)
+
+        nested = Node("ul", children=[Node("li", "child")])
+        items = [Node("li", f"item {index}") for index in range(1, 10)]
+        items.append(Node("li", "parent", children=[nested]))
+        rendered = module.MarkdownConverter({})._render_list(
+            Node("ol", children=items),
+            ordered=True,
+        )
+
+        self.assertIn("10. parent\n    - child", rendered)
+
+    def test_td_only_table_retains_first_row_as_data(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def __init__(self, tag, text=None, children=()):
+                self.tag = tag
+                self.text = text
+                self.tail = None
+                self.children = list(children)
+
+            def __iter__(self):
+                return iter(self.children)
+
+            def xpath(self, expression):
+                return self.children if expression == ".//tr" else []
+
+        table = Node(
+            "table",
+            children=[
+                Node("tr", children=[Node("td", "first"), Node("td", "row")]),
+                Node("tr", children=[Node("td", "second"), Node("td", "row")]),
+            ],
+        )
+        rendered = module.MarkdownConverter({})._render_table(table)
+
+        self.assertEqual(
+            "\n\n|  |  |\n| --- | --- |\n"
+            "| first | row |\n| second | row |\n\n",
+            rendered,
+        )
+
+    def test_non_image_200_response_is_not_cached_as_asset(self):
+        module = _load_fetch_module()
+
+        class Response:
+            status_code = 200
+            headers = {"Content-Type": "text/html; charset=utf-8"}
+            content = b"<html>verification required</html>"
+
+            def close(self):
+                self.closed = True
+
+        class Session:
+            def __init__(self):
+                self.response = Response()
+
+            def get(self, *args, **kwargs):
+                return self.response
+
+        with tempfile.TemporaryDirectory() as temporary:
+            session = Session()
+            assets_dir = Path(temporary) / "assets"
+            asset_map, warnings = module.download_assets(
+                session,
+                ["https://mmbiz.qpic.cn/example.jpg"],
+                assets_dir,
+                reuse_existing=False,
+            )
+
+            self.assertEqual({}, asset_map)
+            self.assertEqual(1, len(warnings))
+            self.assertIn("non-image Content-Type text/html", warnings[0])
+            self.assertEqual([], list(assets_dir.iterdir()))
+            self.assertTrue(session.response.closed)
+
     def test_network_cache_and_provenance_contracts_remain_explicit(self):
         for required_script_contract in (
             "TIMEOUT_SECONDS = 30",
@@ -265,6 +353,9 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "Plain article text escapes Markdown control syntax",
             "default `%LOCALAPPDATA%` cache remains valid",
             "Valid UTF-16 surrogate pairs become one supplementary Unicode character",
+            "known non-image `Content-Type` is an image failure",
+            "Nested list rows are indented to the parent marker's content column",
+            "a `<td>`-only table receives an empty synthetic header",
         ):
             with self.subTest(required_output_contract=required_output_contract):
                 self.assertIn(required_output_contract, self.contract)
