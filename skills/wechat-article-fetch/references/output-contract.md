@@ -117,4 +117,4 @@ Plain article text escapes Markdown control syntax before structural Markdown is
 
 JavaScript Unicode escapes in metadata are decoded before UTF-8 publication. Valid UTF-16 surrogate pairs become one supplementary Unicode character; isolated surrogate code points become the Unicode replacement character instead of making `article.md` unwritable.
 
-Nested list rows are indented to the parent marker's content column. Ordered lists preserve `<ol start>` and `<li value>` numbering. A table whose first row contains `<th>` cells uses that row as its GFM header; a `<td>`-only table receives an empty synthetic header so every source row remains data.
+Inline emphasis, links, and code preserve boundary whitespace outside their Markdown delimiters. Nested lists remain at their source position inside a list item. Nested list rows are indented to the parent marker's content column, as are continuation paragraphs. Ordered lists preserve `<ol start>` and `<li value>` numbering. A table whose first row contains `<th>` cells uses that row as its GFM header; a `<td>`-only table receives an empty synthetic header so every source row remains data.

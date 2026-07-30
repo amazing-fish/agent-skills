@@ -293,6 +293,49 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             converter._render_node(Node("h1", "# literal")),
         )
 
+    def test_inline_markup_preserves_boundary_whitespace(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def __init__(self, tag, text=None, children=(), attrs=None, tail=None):
+                self.tag = tag
+                self.text = text
+                self.tail = tail
+                self.children = list(children)
+                self.attrs = attrs or {}
+
+            def __iter__(self):
+                return iter(self.children)
+
+            def get(self, name):
+                return self.attrs.get(name)
+
+            def itertext(self):
+                yield self.text or ""
+
+        converter = module.MarkdownConverter({})
+        paragraph = Node(
+            "p",
+            "Hello ",
+            children=[
+                Node("strong", "world ", tail="again "),
+                Node("em", "with emphasis ", tail="and "),
+                Node(
+                    "a",
+                    "a link ",
+                    attrs={"href": "https://example.com/"},
+                    tail="plus ",
+                ),
+                Node("code", "code ", tail="done"),
+            ],
+        )
+
+        self.assertEqual(
+            "\n\nHello **world** again *with emphasis* and "
+            "[a link](https://example.com/) plus `code` done\n\n",
+            converter._render_node(paragraph),
+        )
+
     def test_nested_ordered_lists_indent_to_parent_content_column(self):
         module = _load_fetch_module()
 
@@ -352,6 +395,50 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
         )
 
         self.assertEqual("\n\n5. five\n9. nine\n10. ten\n\n", rendered)
+
+    def test_nested_lists_and_continuations_keep_source_order_and_indentation(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def __init__(self, tag, text=None, children=(), tail=None):
+                self.tag = tag
+                self.text = text
+                self.tail = tail
+                self.children = list(children)
+
+            def __iter__(self):
+                return iter(self.children)
+
+            def get(self, name):
+                return None
+
+        nested = Node("ul", children=[Node("li", "child")], tail="after")
+        ordered_content = Node(
+            "ul",
+            children=[Node("li", "before", children=[nested])],
+        )
+        paragraphs = Node(
+            "ul",
+            children=[
+                Node(
+                    "li",
+                    children=[
+                        Node("p", "first"),
+                        Node("p", "second"),
+                    ],
+                )
+            ],
+        )
+        converter = module.MarkdownConverter({})
+
+        self.assertEqual(
+            "- before\n  - child\n  after",
+            converter.convert(Node("div", children=[ordered_content])),
+        )
+        self.assertEqual(
+            "- first\n\n  second",
+            converter.convert(Node("div", children=[paragraphs])),
+        )
 
     def test_td_only_table_retains_first_row_as_data(self):
         module = _load_fetch_module()

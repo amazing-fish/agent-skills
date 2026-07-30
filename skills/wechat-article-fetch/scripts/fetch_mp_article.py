@@ -441,6 +441,20 @@ def _integer_attribute(node: Any, name: str, default: int) -> int:
         return default
 
 
+def _split_boundary_whitespace(value: str) -> tuple[str, str, str]:
+    match = re.fullmatch(r"(\s*)(.*?)(\s*)", value, flags=re.DOTALL)
+    if not match:
+        return "", value, ""
+    return match.group(1), match.group(2), match.group(3)
+
+
+def _wrap_inline(content: str, opening: str, closing: str) -> str:
+    leading, core, trailing = _split_boundary_whitespace(content)
+    if not core:
+        return content
+    return f"{leading}{opening}{core}{closing}{trailing}"
+
+
 class MarkdownConverter:
     """Small, purpose-built converter for common WeChat article markup."""
 
@@ -485,9 +499,9 @@ class MarkdownConverter:
         if tag in BLOCK_TAGS:
             return f"\n\n{stripped}\n\n" if stripped else ""
         if tag in {"strong", "b"}:
-            return f"**{stripped}**" if stripped else ""
+            return _wrap_inline(content, "**", "**")
         if tag in {"em", "i"}:
-            return f"*{stripped}*" if stripped else ""
+            return _wrap_inline(content, "*", "*")
         if tag == "blockquote":
             lines = stripped.splitlines()
             quoted = "\n".join(f"> {line}" if line else ">" for line in lines)
@@ -496,8 +510,10 @@ class MarkdownConverter:
             href = str(node.get("href") or "").strip()
             if not href:
                 return content
-            label = stripped or href
-            return f"[{label}]({href})"
+            leading, label, trailing = _split_boundary_whitespace(content)
+            if not label:
+                return f"[{href}]({href})"
+            return f"{leading}[{label}]({href}){trailing}"
         if tag == "code":
             return self._render_inline_code(node)
         if tag == "li":
@@ -527,13 +543,14 @@ class MarkdownConverter:
         return f"\n\n{fence}{language}\n{code}\n{fence}\n\n"
 
     def _render_inline_code(self, node: Any) -> str:
-        code = "".join(node.itertext()).strip()
+        content = "".join(node.itertext())
+        leading, code, trailing = _split_boundary_whitespace(content)
         if not code:
-            return ""
+            return content
         max_run = max((len(run) for run in re.findall(r"`+", code)), default=0)
         fence = "`" * max(1, max_run + 1)
         padding = " " if code.startswith("`") or code.endswith("`") else ""
-        return f"{fence}{padding}{code}{padding}{fence}"
+        return f"{leading}{fence}{padding}{code}{padding}{fence}{trailing}"
 
     def _render_list(self, node: Any, *, ordered: bool) -> str:
         rows: list[str] = []
@@ -541,13 +558,14 @@ class MarkdownConverter:
         next_number = _integer_attribute(node, "start", 1) if ordered else 1
         for item in items:
             body_parts = [_plain_text(item.text)]
-            nested_parts: list[str] = []
             for child in item:
                 child_tag = _tag_name(child)
                 if child_tag in {"ul", "ol"}:
-                    nested_parts.append(
-                        self._render_list(child, ordered=child_tag == "ol").strip("\n")
-                    )
+                    nested = self._render_list(
+                        child,
+                        ordered=child_tag == "ol",
+                    ).strip("\n")
+                    body_parts.append(f"\n{nested}\n")
                 else:
                     body_parts.append(self._render_node(child))
                 body_parts.append(_plain_text(child.tail))
@@ -562,8 +580,6 @@ class MarkdownConverter:
             body_lines = body.splitlines() or [""]
             rows.append(marker + body_lines[0])
             rows.extend(continuation + line for line in body_lines[1:])
-            for nested in nested_parts:
-                rows.extend(continuation + line for line in nested.splitlines())
         rendered_rows = "\n".join(rows)
         return f"\n\n{rendered_rows}\n\n" if rows else ""
 
@@ -631,7 +647,10 @@ class MarkdownConverter:
                     cleaned.append("")
                 blank = True
                 continue
-            if not re.match(r"^\s*(?:[-*+] |\d+\. |>|```|\|)", line):
+            if not re.match(
+                r"^(?: {2,}\S|\s*(?:[-*+] |\d+\. |>|```|\|))",
+                line,
+            ):
                 line = line.strip()
             cleaned.append(line)
             blank = False
