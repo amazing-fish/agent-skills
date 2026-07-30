@@ -162,6 +162,66 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
                     module.choose_output_dir("safe-sn", profile / "explicit")
                 self.assertEqual("PARSE_FAILED", raised.exception.code)
 
+    def test_explicit_output_cache_requires_matching_sn(self):
+        module = _load_fetch_module()
+
+        class Session:
+            def close(self):
+                self.closed = True
+
+        article = module.Article(
+            title="New article",
+            account="Account",
+            summary="",
+            cover_url="",
+            publish_timestamp=1785311401,
+            publish_time="2026-07-29T15:50:01+08:00",
+            char_count=3,
+            image_urls=[],
+            content=None,
+        )
+        url = "https://mp.weixin.qq.com/s/new-sn"
+        args = types.SimpleNamespace(
+            url=url,
+            assets=False,
+            refresh=False,
+            out=None,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            output_dir = Path(temporary)
+            args.out = output_dir
+            (output_dir / "raw.html").write_bytes(b"old article")
+            (output_dir / "article.md").write_text(
+                '---\nsn: "old-sn"\n---\n',
+                encoding="utf-8",
+            )
+            session = Session()
+            with (
+                mock.patch.object(module, "make_session", return_value=session),
+                mock.patch.object(
+                    module,
+                    "fetch_html",
+                    return_value=b"new article",
+                ) as fetch_html,
+                mock.patch.object(
+                    module,
+                    "parse_article",
+                    return_value=article,
+                ) as parse_article,
+                mock.patch.object(
+                    module,
+                    "render_article_markdown",
+                    return_value='---\nsn: "new-sn"\n---\n',
+                ),
+            ):
+                result = module.run(args)
+
+            fetch_html.assert_called_once_with(session, url)
+            parse_article.assert_called_once_with(b"new article", url)
+            self.assertFalse(result["cached"])
+            self.assertEqual(b"new article", (output_dir / "raw.html").read_bytes())
+            self.assertTrue(session.closed)
+
     def test_error_markers_are_scoped_to_missing_or_invalid_content(self):
         tree = ast.parse(self.script)
         parse_article = next(
@@ -265,7 +325,10 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             mock.patch.object(module, "_extract_account", return_value="Account"),
             mock.patch.object(module, "_extract_timestamp", return_value=1785311401),
         ):
-            article = module.parse_article(b"<html></html>")
+            article = module.parse_article(
+                b"<html></html>",
+                "https://mp.weixin.qq.com/s/example",
+            )
 
         self.assertEqual(0, article.char_count)
         self.assertEqual(
@@ -338,7 +401,10 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             create=True,
         ):
             with self.assertRaises(module.FetchError) as raised:
-                module.parse_article(b"<html></html>")
+                module.parse_article(
+                    b"<html></html>",
+                    "https://mp.weixin.qq.com/s/example",
+                )
 
         self.assertEqual("EMPTY_CONTENT", raised.exception.code)
 
@@ -373,6 +439,47 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "\n\n# \\# literal\n\n",
             converter._render_node(Node("h1", "# literal")),
         )
+
+    def test_split_plain_text_markers_escape_after_inline_join(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def __init__(self, tag, text=None, children=(), tail=None):
+                self.tag = tag
+                self.text = text
+                self.tail = tail
+                self.children = list(children)
+
+            def __iter__(self):
+                return iter(self.children)
+
+            def get(self, name):
+                return None
+
+        converter = module.MarkdownConverter({})
+        examples = (
+            (
+                Node("p", children=[Node("span", "1", tail=". item")]),
+                "\n\n1\\. item\n\n",
+            ),
+            (
+                Node("p", children=[Node("span", "-", tail=" item")]),
+                "\n\n\\- item\n\n",
+            ),
+            (
+                Node(
+                    "p",
+                    children=[
+                        Node("span", "-"),
+                        Node("span", "-", tail="-"),
+                    ],
+                ),
+                "\n\n\\-\\-\\-\n\n",
+            ),
+        )
+        for node, expected in examples:
+            with self.subTest(expected=expected):
+                self.assertEqual(expected, converter._render_node(node))
 
     def test_inline_markup_preserves_boundary_whitespace(self):
         module = _load_fetch_module()
@@ -454,6 +561,41 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "\n\n![](assets/001%20weird%29.png)\n\n",
             converter._render_node(Node("img", attrs={"data-src": source})),
         )
+
+    def test_relative_image_sources_resolve_against_article_url(self):
+        module = _load_fetch_module()
+
+        class Node:
+            def __init__(self, tag, attrs=None, children=()):
+                self.tag = tag
+                self.text = None
+                self.tail = None
+                self.attrs = attrs or {}
+                self.children = list(children)
+
+            def __iter__(self):
+                return iter(self.children)
+
+            def get(self, name):
+                return self.attrs.get(name)
+
+        article_url = "https://mp.weixin.qq.com/s/example"
+        absolute_url = "https://mp.weixin.qq.com/images/picture.png"
+        image = Node("img", {"src": "/images/picture.png"})
+        content = Node("div", children=[image])
+
+        self.assertEqual(
+            [absolute_url],
+            module._renderable_image_urls(content, article_url),
+        )
+        self.assertEqual(
+            "\n\n![](assets/001.png)\n\n",
+            module.MarkdownConverter(
+                {absolute_url: "assets/001.png"},
+                article_url,
+            )._render_image(image),
+        )
+        self.assertIn("mp.weixin.qq.com", module.TRUSTED_ASSET_HOSTS)
 
     def test_nested_ordered_lists_indent_to_parent_content_column(self):
         module = _load_fetch_module()
@@ -1076,7 +1218,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
 
                 self.assertEqual({}, asset_map)
                 self.assertEqual([], session.calls)
-                self.assertIn("trusted WeChat CDN", warnings[0])
+                self.assertIn("trusted WeChat image host", warnings[0])
 
             with tempfile.TemporaryDirectory() as temporary:
                 session = Session()
@@ -1145,7 +1287,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             'TRUSTED_ARTICLE_HOSTS = frozenset({"mp.weixin.qq.com"})',
             "MAX_ASSET_BYTES = 20 * 1024 * 1024",
             "MAX_ASSET_REDIRECTS = 5",
-            'TRUSTED_ASSET_HOSTS = frozenset({"mmbiz.qpic.cn"})',
+            'TRUSTED_ASSET_HOSTS = frozenset({"mmbiz.qpic.cn", "mp.weixin.qq.com"})',
             "cached=cache_hit",
             '"cached": cached',
             'f"原文链接：{source_url}"',
@@ -1174,7 +1316,7 @@ class WechatArticleFetchPolicyTests(unittest.TestCase):
             "known non-image `Content-Type` is an image failure",
             "empty image payload is an image failure",
             "public HTTPS destination",
-            "trusted WeChat CDN host `mmbiz.qpic.cn`",
+            "trusted WeChat image hosts",
             "every redirect target",
             "20 MiB",
             "Skipped subtrees do not contribute",

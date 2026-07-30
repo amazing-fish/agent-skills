@@ -39,7 +39,7 @@ TRUSTED_ARTICLE_HOSTS = frozenset({"mp.weixin.qq.com"})
 MAX_ASSET_BYTES = 20 * 1024 * 1024
 ASSET_CHUNK_BYTES = 64 * 1024
 MAX_ASSET_REDIRECTS = 5
-TRUSTED_ASSET_HOSTS = frozenset({"mmbiz.qpic.cn"})
+TRUSTED_ASSET_HOSTS = frozenset({"mmbiz.qpic.cn", "mp.weixin.qq.com"})
 TUNNEL_FAKE_IP_RANGE = ipaddress.ip_network("198.18.0.0/15")
 REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 MARKDOWN_DESTINATION_SAFE = ":/?#@!$&'*+,;=%-._~"
@@ -333,7 +333,7 @@ def _validate_public_asset_url(url: str) -> None:
         url,
         trusted_hosts=TRUSTED_ASSET_HOSTS,
         label="image",
-        host_description="the trusted WeChat CDN",
+        host_description="a trusted WeChat image host",
     )
 
 
@@ -642,8 +642,10 @@ def _extract_timestamp(source: str) -> int | None:
         return None
 
 
-def _normalize_image_url(value: str) -> str:
+def _normalize_image_url(value: str, article_url: str = "") -> str:
     value = value.strip()
+    if article_url and value:
+        return urljoin(article_url, value)
     if value.startswith("//"):
         return f"https:{value}"
     return value
@@ -657,11 +659,14 @@ def _tag_name(node: Any) -> str:
     return tag.rsplit(":", 1)[-1]
 
 
-def _image_source(image: Any) -> str:
-    lazy_source = _normalize_image_url(str(image.get("data-src") or ""))
+def _image_source(image: Any, article_url: str = "") -> str:
+    lazy_source = _normalize_image_url(
+        str(image.get("data-src") or ""),
+        article_url,
+    )
     if lazy_source:
         return lazy_source
-    return _normalize_image_url(str(image.get("src") or ""))
+    return _normalize_image_url(str(image.get("src") or ""), article_url)
 
 
 def _renderable_text_content(node: Any) -> str:
@@ -676,20 +681,20 @@ def _renderable_text_content(node: Any) -> str:
     return "".join(pieces)
 
 
-def _renderable_image_urls(node: Any) -> list[str]:
+def _renderable_image_urls(node: Any, article_url: str) -> list[str]:
     image_urls: list[str] = []
     for child in node:
         tag = _tag_name(child)
         if not tag or tag in SKIPPED_TAGS:
             continue
-        if tag == "img" and (source := _image_source(child)):
+        if tag == "img" and (source := _image_source(child, article_url)):
             image_urls.append(source)
         if tag not in {"pre", "code"}:
-            image_urls.extend(_renderable_image_urls(child))
+            image_urls.extend(_renderable_image_urls(child, article_url))
     return image_urls
 
 
-def parse_article(raw_html: bytes) -> Article:
+def parse_article(raw_html: bytes, article_url: str) -> Article:
     source = raw_html.decode("utf-8", errors="replace")
     try:
         document = lxml_html.fromstring(raw_html)
@@ -704,7 +709,7 @@ def parse_article(raw_html: bytes) -> Article:
     content = contents[0]
     visible_text = _renderable_text_content(content)
     char_count = len(re.sub(r"\s+", "", visible_text))
-    image_urls = _renderable_image_urls(content)
+    image_urls = _renderable_image_urls(content, article_url)
     if char_count == 0 and not image_urls:
         detect_page_error(raw_html)
         raise FetchError("EMPTY_CONTENT", "The div#js_content article body is empty.")
@@ -755,16 +760,26 @@ def parse_article(raw_html: bytes) -> Article:
     )
 
 
+def _escape_plain_line_markers(value: str) -> str:
+    lines: list[str] = []
+    for line in value.splitlines(keepends=True) or [value]:
+        body = line.rstrip("\r\n")
+        ending = line[len(body) :]
+        if re.fullmatch(r"\s*(?:-\s*){3,}", body):
+            body = body.replace("-", r"\-")
+        body = re.sub(r"^(\s*)([-+])(?=\s)", r"\1\\\2", body)
+        body = re.sub(r"^(\s*)(\d+)([.)])(?=\s)", r"\1\2\\\3", body)
+        lines.append(body + ending)
+    return "".join(lines)
+
+
 def _plain_text(value: str | None) -> str:
     if not value:
         return ""
     normalized = re.sub(r"\s+", " ", value.replace("\xa0", " "))
     escaped = normalized.replace("\\", "\\\\")
     escaped = re.sub(r"([`*_\[\]<>#~])", r"\\\1", escaped)
-    if re.fullmatch(r"\s*(?:-\s*){3,}", escaped):
-        escaped = escaped.replace("-", r"\-")
-    escaped = re.sub(r"^(\s*)([-+])(?=\s)", r"\1\\\2", escaped)
-    return re.sub(r"^(\s*)(\d+)([.)])(?=\s)", r"\1\2\\\3", escaped)
+    return _escape_plain_line_markers(escaped)
 
 
 def _markdown_destination(value: str) -> str:
@@ -798,18 +813,50 @@ def _wrap_inline(content: str, opening: str, closing: str) -> str:
 class MarkdownConverter:
     """Small, purpose-built converter for common WeChat article markup."""
 
-    def __init__(self, asset_map: dict[str, str]) -> None:
+    def __init__(self, asset_map: dict[str, str], article_url: str = "") -> None:
         self.asset_map = asset_map
+        self.article_url = article_url
 
     def convert(self, root: Any) -> str:
         rendered = self._render_children(root)
         return self._cleanup(rendered)
 
     def _render_children(self, node: Any) -> str:
-        pieces = [_plain_text(node.text)]
+        pieces: list[str] = []
+        inline_pieces = [_plain_text(node.text)]
+
+        def flush_inline() -> None:
+            if inline_pieces:
+                pieces.append(
+                    _escape_plain_line_markers("".join(inline_pieces))
+                )
+                inline_pieces.clear()
+
+        structural_tags = BLOCK_TAGS | {
+            "blockquote",
+            "br",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "hr",
+            "img",
+            "li",
+            "ol",
+            "p",
+            "pre",
+            "table",
+            "ul",
+        }
         for child in node:
-            pieces.append(self._render_node(child))
-            pieces.append(_plain_text(child.tail))
+            rendered = self._render_node(child)
+            if _tag_name(child) in structural_tags:
+                flush_inline()
+                pieces.append(rendered)
+            else:
+                inline_pieces.append(rendered)
+            inline_pieces.append(_plain_text(child.tail))
+        flush_inline()
         return "".join(pieces)
 
     def _render_node(self, node: Any) -> str:
@@ -862,7 +909,7 @@ class MarkdownConverter:
         return content
 
     def _render_image(self, node: Any) -> str:
-        source = _image_source(node)
+        source = _image_source(node, self.article_url)
         if not source:
             return ""
         target = self.asset_map.get(source, source)
@@ -1209,7 +1256,7 @@ def render_article_markdown(
         if key == "url":
             lines.append(f"source_url: {_yaml_scalar(source_url)}")
     lines.append("---")
-    body = MarkdownConverter(asset_map).convert(article.content)
+    body = MarkdownConverter(asset_map, source_url).convert(article.content)
     lines.extend(["", body, "", f"原文链接：{source_url}", ""])
     return "\n".join(lines)
 
@@ -1245,6 +1292,26 @@ def build_success(
     }
 
 
+def _cached_markdown_matches_sn(markdown_path: Path, sn: str) -> bool:
+    try:
+        lines = markdown_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError):
+        return False
+    if not lines or lines[0].strip() != "---":
+        return False
+    for line in lines[1:]:
+        if line.strip() == "---":
+            return False
+        key, separator, raw_value = line.partition(":")
+        if separator and key.strip() == "sn":
+            try:
+                cached_sn = json.loads(raw_value.strip())
+            except (json.JSONDecodeError, TypeError):
+                return False
+            return isinstance(cached_sn, str) and cached_sn == sn
+    return False
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     original_url = args.url
     sn = parse_sn(original_url)
@@ -1255,6 +1322,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         not args.refresh
         and raw_html_path.is_file()
         and markdown_path.is_file()
+        and _cached_markdown_matches_sn(markdown_path, sn)
     )
 
     session: requests.Session | None = None
@@ -1267,7 +1335,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         session = make_session()
         raw_html = fetch_html(session, original_url)
 
-    article = parse_article(raw_html)
+    article = parse_article(raw_html, original_url)
     if not cache_hit:
         try:
             invalidate_asset_cache(output_dir)

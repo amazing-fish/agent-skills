@@ -24,7 +24,7 @@ Successful output contains:
 - `raw.html`: exact response bytes used for parsing. This file is never written to stdout.
 - `assets/`: created only when `--assets` is requested. Successfully downloaded body images are referenced with relative POSIX-style paths from `article.md`.
 
-An article body is non-empty when it contains visible text or at least one image URL. Body images prefer `data-src` and fall back to `src`, preserving image-only and non-lazy-loaded articles.
+An article body is non-empty when it contains visible text or at least one image URL. Body images prefer `data-src` and fall back to `src`, preserving image-only and non-lazy-loaded articles. Relative and protocol-relative image sources are resolved against the article URL before counting, downloading, or rendering.
 
 The script rejects an explicit `--out` inside the current working directory or any output inside a detected Git worktree. The default `%LOCALAPPDATA%` cache remains valid when PowerShell starts in the user-profile directory, even though that directory is an ancestor of `%LOCALAPPDATA%`.
 
@@ -105,13 +105,13 @@ warnings: []
 
 ## Cache semantics
 
-A normal call is a cache hit only when both `raw.html` and `article.md` exist. The parser reuses `raw.html`, emits `cached: true`, and performs no article network request. `--refresh` bypasses the cache.
+A normal call is a cache hit only when both `raw.html` and `article.md` exist and the frontmatter `sn` matches the requested cache key. The parser reuses `raw.html`, emits `cached: true`, and performs no article network request. Reusing an explicit `--out` directory for a different `sn` is a cache miss and refreshes the directory instead of relabeling old HTML. `--refresh` bypasses the cache.
 
 Article requests use the same fail-closed destination policy on the initial URL and every redirect target: HTTPS on port 443, no URL credentials, the exact trusted host `mp.weixin.qq.com`, and no private, loopback, link-local, reserved, or otherwise non-public DNS results. Redirects are followed manually, with a maximum of five. The documented Windows tunnel-adapter exception for synthetic `198.18.0.0/15` addresses applies only to the exact trusted hostname and retains HTTPS certificate verification.
 
 Article response bodies are streamed in 64 KiB chunks with a 30-second read deadline and a 10 MiB decoded-body limit, including when `Content-Length` is absent or incorrect. A dedicated deadline watchdog shuts down the active transport socket before closing the response, so a body read blocked while waiting to fill its next chunk cannot extend the deadline indefinitely. A larger or overdue response fails with `NETWORK` before `raw.html` is published.
 
-If `--assets` is added to a cache that does not already contain the requested images, image downloads may still make network requests. Each request must use a public HTTPS destination on port 443 with no URL credentials and the trusted WeChat CDN host `mmbiz.qpic.cn`. DNS results are rejected if any resolved address is loopback, private, link-local, reserved, or otherwise non-public. The `198.18.0.0/15` network-benchmark range is accepted only for that exact trusted hostname because Windows tunnel adapters commonly expose public destinations through synthetic addresses in this range; HTTPS certificate verification still binds the connection to the CDN hostname. Automatic redirects are disabled, and every redirect target is resolved and validated under the same policy before the next request. At most five redirects are followed.
+If `--assets` is added to a cache that does not already contain the requested images, image downloads may still make network requests. Each request must use a public HTTPS destination on port 443 with no URL credentials and one of the trusted WeChat image hosts: CDN host `mmbiz.qpic.cn` or article host `mp.weixin.qq.com` for resolved relative sources. DNS results are rejected if any resolved address is loopback, private, link-local, reserved, or otherwise non-public. The `198.18.0.0/15` network-benchmark range is accepted only for those exact trusted hostnames because Windows tunnel adapters commonly expose public destinations through synthetic addresses in this range; HTTPS certificate verification still binds the connection to the requested hostname. Automatic redirects are disabled, and every redirect target is resolved and validated under the same policy before the next request. At most five redirects are followed.
 
 Image bodies use the same 30-second read deadline, are streamed in bounded chunks, and are limited to 20 MiB per response, including when `Content-Length` is absent or incorrect. Image failures do not fail the article; they remain remote Markdown URLs and add strings to `warnings`. An HTTP 200 response with a known non-image `Content-Type` is an image failure and is never cached as an asset. An empty image payload is an image failure under the same rule. An oversized payload is also rejected without writing a partial asset.
 
@@ -119,7 +119,7 @@ A successful article refresh invalidates the existing `assets/` directory before
 
 Deletion, verification, rate-limit, and expired-link markers are evaluated only when the expected article body is missing or empty, or when the HTML cannot be parsed. Marker phrases inside a non-empty `div#js_content` are article text, not error-page evidence. Skipped subtrees do not contribute text or images to the emptiness predicate or output counts.
 
-Plain article text escapes Markdown control syntax before structural Markdown is emitted. Literal text such as `# heading`, `1. item`, `> quote`, `---`, `~~~`, or `~~text~~` therefore remains text instead of becoming a heading, list, blockquote, thematic break, code fence, or strikethrough; converter-generated headings, lists, links, and emphasis retain their intended structure.
+Plain article text escapes Markdown control syntax before structural Markdown is emitted. Escaping is rechecked after adjacent plain inline fragments are joined, so markers split across transparent elements cannot become lists or thematic breaks. Literal text such as `# heading`, `1. item`, `> quote`, `---`, `~~~`, or `~~text~~` therefore remains text instead of becoming a heading, list, blockquote, thematic break, code fence, or strikethrough; converter-generated headings, lists, links, and emphasis retain their intended structure.
 
 Markdown link and image destinations percent-encode whitespace, parentheses, square brackets, angle brackets, quotes, backslashes, and other syntax-breaking characters while preserving URL separators and existing percent escapes. This applies to labeled links, empty-label link fallbacks, remote image URLs, and downloaded relative asset paths.
 
