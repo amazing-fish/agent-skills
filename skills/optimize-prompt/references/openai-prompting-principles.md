@@ -33,7 +33,7 @@ Optimize for direct questions, explanations, drafts, comparisons, plans, and eve
 
 ### ChatGPT Work
 
-Use when the task draws on several sources or tools, changes files, follows multiple steps, or produces a substantial reusable deliverable. Name the source material, audience, deliverable, and review boundary. Require approval before sending, publishing, or changing information relied on by others.
+Use when the task draws on several sources or tools, changes files, follows multiple steps, or produces a substantial reusable deliverable. Name the source material, audience, deliverable, and review boundary. Preserve existing authorization; require approval only for consequential actions not already authorized or when an applicable rule requires it.
 
 ### Codex
 
