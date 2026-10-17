@@ -1,6 +1,6 @@
 ---
 name: execute-github-issue-pr-workflow
-description: Execute a lightweight governed GitHub Issue-to-PR delivery loop with an optional independent goal-prompt preflight, focused implementation, clickable commit and PR links, one-shot 6-minute Codex review checks, comment resolution, human-readable diff evidence, controlled merge or staging, Issue reconciliation, and documentation updates. Use when repeatedly advancing repository Issues, shepherding PRs, handling Codex feedback, or following the user's established GitHub workflow.
+description: Execute a lightweight governed GitHub Issue-to-PR delivery loop with an optional independent goal-prompt preflight, focused implementation, clickable commit and PR links, staged 3+2+1+4-minute Codex review waits, comment resolution, human-readable diff evidence, controlled merge or staging, Issue reconciliation, and documentation updates. Use when repeatedly advancing repository Issues, shepherding PRs, handling Codex feedback, or following the user's established GitHub workflow.
 ---
 
 # Execute GitHub Issue–PR Workflow
@@ -54,9 +54,9 @@ The optimizer's rewrite-only and separate-follow-up boundaries govern the standa
 
 ### Schedule the review timer safely
 
-Treat the 6-minute delay as an absolute instant, not as local wall-clock fields. Use [the review timer contract](references/review-timer-contract.json) as the normative state-machine data. It preserves the native relative schedule, verified UTC heartbeat fallback, pending stop, and fail-closed cleanup outcomes. If this Skill contains `scripts/resolve_review_timer.py`, prefer it to compute `target_at_utc`, derive the UTC RRULE fields, and verify the resolved next run. If the script is unavailable, apply the same calculations and contract directly.
+Treat each deadline in the 3+2+1+4-minute sequence as an absolute instant, not as local wall-clock fields. Use [the review timer contract](references/review-timer-contract.json) as the normative state-machine data. It preserves the native relative schedule, verified UTC heartbeat fallback, pending stop, and fail-closed cleanup outcomes. If this Skill contains `scripts/resolve_review_timer.py`, prefer it to compute `target_at_utc`, derive the UTC RRULE fields, and verify the resolved next run. If the script is unavailable, apply the same calculations and contract directly.
 
-1. Capture `now_utc`, then compute the exact `target_at_utc = now_utc + 6 minutes`. Prefer an environment-native relative one-shot wait. For Codex Desktop, use a heartbeat attached to the current thread; do not create a standalone cron automation for this follow-up.
+1. Capture `cycle_started_at_utc` once for each new HEAD. For stage 1–4 compute `target_at_utc = cycle_started_at_utc + [3, 5, 6, 10][stage - 1] minutes`. Use `--stage` and `--cycle-start` when calling the resolver for an existing cycle; never replace the saved cycle start with the current time. Prefer an environment-native relative one-shot wait. For Codex Desktop, use a heartbeat attached to the current thread; do not create a standalone cron automation for this follow-up.
 2. If the heartbeat surface accepts only an RRULE, derive `BYHOUR`, `BYMINUTE`, `BYSECOND`, and `BYDAY` from `target_at_utc` in UTC and ensure the first future occurrence identifies the intended instant. Never copy the user's local wall-clock fields into the RRULE. Use a timezone-aware conversion only to present the target in the user's time zone.
 3. Treat a rejected `DTSTART`, a relative `COUNT=1` rule with no future run, or any other native scheduling failure as a failure of that path. Do not fall back to local wall-clock fields. Try a UTC RRULE heartbeat only when its first occurrence can be verified; if that path is also rejected, report `Codex review pending`.
 4. After creating or updating the timer, read its resolved next run. If the surface does not expose that value, read equivalent persisted schedule evidence and independently resolve its first future occurrence. Accept it only when it is in the future and differs from `target_at_utc` by at most 60 seconds.
@@ -65,15 +65,15 @@ Treat the 6-minute delay as an absolute instant, not as local wall-clock fields.
 
 For each new ready-for-review PR HEAD:
 
-1. Record the PR URL and HEAD, then set exactly one **one-shot 6-minute timer** under the contract above. Do not poll while it is active.
-2. When it fires, refresh the PR once. If HEAD differs from the recorded HEAD, discard this cycle and start one new timer. Otherwise read the Codex state or reactions on the PR body, review decisions including requested changes, conversation and inline comments, unresolved threads, checks, and mergeability.
-3. Classify that single refresh:
-   - **Passed:** the repository's current Codex-bot 👍 on the PR is sufficient. Do not require a newly created reaction, commit review, `commit_id`, or SHA binding. This assumes the configured bot maintains current PR-level state after pushes; stop if it does not. Continue only if no actionable feedback or relevant failed check remains; document any explicit check waiver.
-   - **In progress:** do not mention the bot again.
-   - **Not triggered:** post `@codex review` once for this review cycle and return the comment URL.
-   - **Findings or failures:** fix in scope issues on the same branch, test, push, and return the new commit URL.
-4. After any non-passed classification, end the refresh by setting one new one-shot 6-minute timer under the contract above. Never poll every minute or infer success from elapsed time, silence, or acknowledgement alone.
-5. If waiting cannot continue in the current environment, report `Codex review pending` with the PR URL, HEAD, current robot state, and the next refresh time, then stop cleanly.
+1. Use the wait sequence **3 minutes → 2 minutes → 1 minute → 4 minutes** for each HEAD: check at cumulative minutes **3, 5, 6 and 10** from the cycle start. Record PR URL, HEAD, cycle start, completed wait stage, next deadline and whether `@codex review` was posted. Set only the next one-shot timer under the contract above; do not poll while it is active. On a later turn, resume the saved stage and deadline rather than restarting or duplicating the sequence.
+2. At each deadline, refresh once: HEAD, Codex state/reactions, review decisions, conversation and inline comments, unresolved threads, checks, and mergeability. If HEAD changed, clean up the old timer and begin the 3-minute first stage for the new HEAD. After a delayed resumption, refresh once, skip elapsed deadlines and schedule only the next future stage; do not issue catch-up polls.
+3. Classify that refresh:
+   - **Passed:** stop waiting. The repository's current Codex-bot 👍 on the PR is sufficient. Do not require a newly created reaction, commit review, `commit_id`, or SHA binding. This assumes the configured bot maintains current PR-level state after pushes; stop if it does not. Continue only if no actionable feedback or relevant failed check remains; document any explicit check waiver.
+   - **In progress:** do not mention the bot again; advance to the next wait stage if one remains.
+   - **Not triggered:** post `@codex review` once for this review cycle and return the comment URL. Preserve the current sequence; do not repeat an already posted trigger or reset the waits after a turn boundary.
+   - **Findings or failures:** fix in scope issues on the same branch, test, push, and return the new commit URL. Start a fresh sequence for the new HEAD.
+4. After a pending classification, schedule only the next future stage under the timer contract if one remains. Never infer success from elapsed time, silence or acknowledgement. If the final 10-minute check is still pending, stop automatic waiting for that HEAD and checkpoint the exhausted sequence; do not loop or silently restart it.
+5. If waiting cannot continue earlier, preserve the current stage. Report `Codex review pending`, PR URL, HEAD, robot state, completed stage and next refresh time, or explicitly state that the sequence is exhausted and a later refresh is needed.
 
 ## Resolve findings
 

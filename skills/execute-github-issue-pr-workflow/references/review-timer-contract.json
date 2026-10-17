@@ -3,7 +3,7 @@
     "id": "native_relative_one_shot",
     "surface": "relative_one_shot",
     "evidence": "resolved_next_run",
-    "schedule_basis": "now_utc_plus_6m",
+    "schedule_basis": "cycle_start_plus_stage_offset",
     "outcome": "create_and_verify"
   },
   {

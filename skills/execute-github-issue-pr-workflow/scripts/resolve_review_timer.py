@@ -11,7 +11,8 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-REVIEW_DELAY = timedelta(minutes=6)
+REVIEW_WAIT_MINUTES = (3, 2, 1, 4)
+REVIEW_DELAY = timedelta(minutes=REVIEW_WAIT_MINUTES[0])
 NEXT_RUN_TOLERANCE = timedelta(seconds=60)
 WEEKDAY_CODES = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
 
@@ -29,6 +30,8 @@ class NextRunDecision:
 class ReviewTimerResolution:
     user_timezone: str
     now_utc: datetime
+    review_stage: int
+    cycle_started_at_utc: datetime
     target_at_utc: datetime
     target_at_local: datetime
     rrule_fields: dict[str, int | str]
@@ -41,10 +44,28 @@ def _require_aware(value: datetime, name: str) -> datetime:
     return value
 
 
-def compute_target_at_utc(*, now: datetime, user_timezone: str) -> datetime:
+def compute_target_at_utc(
+    *,
+    now: datetime,
+    user_timezone: str,
+    review_stage: int = 1,
+    cycle_started_at: datetime | None = None,
+) -> datetime:
     zone = ZoneInfo(user_timezone)
     now_in_user_timezone = _require_aware(now, "now").astimezone(zone)
-    return now_in_user_timezone.astimezone(timezone.utc) + REVIEW_DELAY
+    if type(review_stage) is not int or not 1 <= review_stage <= len(REVIEW_WAIT_MINUTES):
+        raise ValueError("review_stage must be between 1 and 4; do not restart an exhausted cycle")
+    if cycle_started_at is None:
+        if review_stage != 1:
+            raise ValueError("cycle_started_at is required after the first stage")
+        cycle_start_utc = now_in_user_timezone.astimezone(timezone.utc)
+    else:
+        cycle_start_utc = _require_aware(
+            cycle_started_at, "cycle_started_at"
+        ).astimezone(timezone.utc)
+        if cycle_start_utc > now_in_user_timezone.astimezone(timezone.utc):
+            raise ValueError("cycle_started_at cannot be in the future")
+    return cycle_start_utc + timedelta(minutes=sum(REVIEW_WAIT_MINUTES[:review_stage]))
 
 
 def derive_utc_rrule_fields(target_at_utc: datetime) -> dict[str, int | str]:
@@ -124,16 +145,27 @@ def resolve_review_timer(
     user_timezone: str,
     resolved_next_run: datetime | None = None,
     verification_time: datetime | None = None,
+    review_stage: int = 1,
+    cycle_started_at: datetime | None = None,
 ) -> ReviewTimerResolution:
     zone = ZoneInfo(user_timezone)
     now_utc = _require_aware(now, "now").astimezone(zone).astimezone(timezone.utc)
     target_at_utc = compute_target_at_utc(
         now=now,
         user_timezone=user_timezone,
+        review_stage=review_stage,
+        cycle_started_at=cycle_started_at,
     )
+    if target_at_utc <= now_utc:
+        raise ValueError("review stage deadline has elapsed; refresh once and skip elapsed stages")
     return ReviewTimerResolution(
         user_timezone=user_timezone,
         now_utc=now_utc,
+        review_stage=review_stage,
+        cycle_started_at_utc=(
+            _require_aware(cycle_started_at, "cycle_started_at").astimezone(timezone.utc)
+            if cycle_started_at is not None else now_utc
+        ),
         target_at_utc=target_at_utc,
         target_at_local=target_at_utc.astimezone(zone),
         rrule_fields=derive_utc_rrule_fields(target_at_utc),
@@ -158,6 +190,8 @@ def _to_payload(resolution: ReviewTimerResolution) -> dict[str, object]:
     return {
         "user_timezone": resolution.user_timezone,
         "now_utc": resolution.now_utc.isoformat(),
+        "review_stage": resolution.review_stage,
+        "cycle_started_at_utc": resolution.cycle_started_at_utc.isoformat(),
         "target_at_utc": resolution.target_at_utc.isoformat(),
         "target_at_local": resolution.target_at_local.isoformat(),
         "rrule_fields": resolution.rrule_fields,
@@ -178,6 +212,11 @@ def _to_payload(resolution: ReviewTimerResolution) -> dict[str, object]:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timezone", required=True, dest="user_timezone")
+    parser.add_argument("--stage", type=int, choices=range(1, 5), default=1, dest="review_stage")
+    parser.add_argument(
+        "--cycle-start",
+        help="Timezone-aware ISO 8601 cycle start; required for stages 2 through 4",
+    )
     parser.add_argument(
         "--now",
         help="Timezone-aware ISO 8601 current time; defaults to the current user-zone time",
@@ -217,6 +256,11 @@ def main(argv: list[str] | None = None) -> int:
             user_timezone=args.user_timezone,
             resolved_next_run=resolved_next_run,
             verification_time=verification_time,
+            review_stage=args.review_stage,
+            cycle_started_at=(
+                _parse_datetime(args.cycle_start, "cycle_started_at")
+                if args.cycle_start else None
+            ),
         )
     except (TypeError, ValueError, ZoneInfoNotFoundError) as exc:
         print(f"invalid review timer input: {exc}", file=sys.stderr)
