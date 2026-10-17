@@ -35,7 +35,7 @@ UNSCHEDULED_SURFACES = {
 EXPECTED_SCHEDULE_BY_CASE = {
     "native_relative_one_shot": (
         "relative_one_shot",
-        "now_utc_plus_6m",
+        "cycle_start_plus_stage_offset",
     ),
     "rrule_only_heartbeat": (
         "heartbeat_rrule_only",
@@ -77,8 +77,10 @@ resolver = _load_resolver()
 
 
 def _scheduled_at_from_contract_basis(schedule_basis, resolution):
-    if schedule_basis == "now_utc_plus_6m":
-        return resolution.now_utc + resolver.REVIEW_DELAY
+    if schedule_basis == "cycle_start_plus_stage_offset":
+        return resolution.cycle_started_at_utc + timedelta(
+            minutes=sum(resolver.REVIEW_WAIT_MINUTES[:resolution.review_stage])
+        )
     if schedule_basis == "target_at_utc":
         return resolution.target_at_utc
     if schedule_basis == "local_wall_time":
@@ -100,7 +102,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
             tzinfo=ZoneInfo("Asia/Shanghai"),
         )
         self.now_utc = self.started_at.astimezone(timezone.utc)
-        self.target_at_utc = self.now_utc + timedelta(minutes=6)
+        self.target_at_utc = self.now_utc + timedelta(minutes=3)
 
     def test_resolves_target_and_rrule_fields_from_real_zoneinfo(self):
         resolution = resolver.resolve_review_timer(
@@ -111,13 +113,13 @@ class ReviewTimerResolverTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            datetime.fromisoformat("2026-07-26T17:38:30+00:00"),
+            datetime.fromisoformat("2026-07-26T17:35:30+00:00"),
             resolution.target_at_utc,
         )
         self.assertEqual(
             {
                 "BYHOUR": 17,
-                "BYMINUTE": 38,
+                "BYMINUTE": 35,
                 "BYSECOND": 30,
                 "BYDAY": "SU",
             },
@@ -254,7 +256,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
                     0,
                     tzinfo=ZoneInfo("Europe/London"),
                 ),
-                datetime.fromisoformat("2026-01-15T12:06:00+00:00"),
+                datetime.fromisoformat("2026-01-15T12:03:00+00:00"),
                 12,
             ),
             (
@@ -267,7 +269,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
                     0,
                     tzinfo=ZoneInfo("Europe/London"),
                 ),
-                datetime.fromisoformat("2026-07-15T11:06:00+00:00"),
+                datetime.fromisoformat("2026-07-15T11:03:00+00:00"),
                 11,
             ),
         )
@@ -318,7 +320,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
             10,
             25,
             1,
-            4,
+            1,
             tzinfo=timezone.utc,
         )
 
@@ -332,7 +334,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
         self.assertEqual(timedelta(hours=1), started_at.utcoffset())
         self.assertEqual(expected_target_at_utc, resolution.target_at_utc)
         self.assertEqual(
-            timedelta(minutes=6),
+            timedelta(minutes=3),
             resolution.target_at_utc - started_at.astimezone(timezone.utc),
         )
         self.assertEqual(timedelta(0), resolution.target_at_local.utcoffset())
@@ -340,7 +342,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
         self.assertEqual(
             {
                 "BYHOUR": 1,
-                "BYMINUTE": 4,
+                "BYMINUTE": 1,
                 "BYSECOND": 0,
                 "BYDAY": "SU",
             },
@@ -371,7 +373,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
         self.assertEqual(0, completed.returncode, completed.stderr)
         payload = json.loads(completed.stdout)
         self.assertEqual(
-            "2026-07-26T17:38:30+00:00",
+            "2026-07-26T17:35:30+00:00",
             payload["target_at_utc"],
         )
         self.assertEqual("SU", payload["rrule_fields"]["BYDAY"])
@@ -387,6 +389,98 @@ class ReviewTimerResolverTests(unittest.TestCase):
                 now=datetime(2026, 7, 27, 1, 32, 30),
                 user_timezone="Asia/Shanghai",
             )
+
+    def test_all_stages_keep_the_original_cycle_start(self):
+        for stage, now_minutes, deadline_minutes in (
+            (1, 0, 3), (2, 3.5, 5), (3, 5.5, 6), (4, 6.5, 10),
+        ):
+            with self.subTest(stage=stage):
+                now = self.now_utc + timedelta(minutes=now_minutes)
+                target = self.now_utc + timedelta(minutes=deadline_minutes)
+                resolution = resolver.resolve_review_timer(
+                    now=now,
+                    user_timezone="Asia/Shanghai",
+                    review_stage=stage,
+                    cycle_started_at=self.started_at,
+                    resolved_next_run=target,
+                    verification_time=now,
+                )
+                self.assertEqual(target, resolution.target_at_utc)
+                self.assertEqual(self.now_utc, resolution.cycle_started_at_utc)
+                self.assertEqual(stage, resolution.review_stage)
+                self.assertEqual("accept", resolution.next_run.decision)
+
+    def test_resume_cannot_reschedule_expired_stages(self):
+        resumed_at = self.now_utc + timedelta(minutes=5, seconds=30)
+        for stage in (1, 2):
+            with self.subTest(stage=stage):
+                with self.assertRaisesRegex(ValueError, "deadline has elapsed"):
+                    resolver.resolve_review_timer(
+                        now=resumed_at,
+                        user_timezone="Asia/Shanghai",
+                        review_stage=stage,
+                        cycle_started_at=self.started_at,
+                    )
+        resolution = resolver.resolve_review_timer(
+            now=resumed_at,
+            user_timezone="Asia/Shanghai",
+            review_stage=3,
+            cycle_started_at=self.started_at,
+        )
+        self.assertEqual(
+            self.now_utc + timedelta(minutes=6), resolution.target_at_utc
+        )
+        with self.assertRaisesRegex(ValueError, "deadline has elapsed"):
+            resolver.resolve_review_timer(
+                now=self.now_utc + timedelta(minutes=10),
+                user_timezone="Asia/Shanghai",
+                review_stage=4,
+                cycle_started_at=self.started_at,
+            )
+
+    def test_invalid_stage_or_missing_cycle_does_not_restart_waiting(self):
+        for stage in (0, 5, True, 1.5):
+            with self.subTest(stage=stage):
+                with self.assertRaisesRegex(ValueError, "review_stage must be"):
+                    resolver.compute_target_at_utc(
+                        now=self.started_at,
+                        user_timezone="Asia/Shanghai",
+                        review_stage=stage,
+                    )
+        with self.assertRaisesRegex(ValueError, "cycle_started_at is required"):
+            resolver.compute_target_at_utc(
+                now=self.started_at,
+                user_timezone="Asia/Shanghai",
+                review_stage=2,
+            )
+        with self.assertRaisesRegex(ValueError, "cannot be in the future"):
+            resolver.compute_target_at_utc(
+                now=self.started_at,
+                user_timezone="Asia/Shanghai",
+                cycle_started_at=self.started_at + timedelta(seconds=1),
+            )
+
+    def test_cli_preserves_cycle_and_stage_after_resume(self):
+        now = self.now_utc + timedelta(minutes=7)
+        target = self.now_utc + timedelta(minutes=10)
+        completed = subprocess.run(
+            [
+                sys.executable, str(SCRIPT_PATH),
+                "--timezone", "Asia/Shanghai",
+                "--now", now.isoformat(),
+                "--stage", "4",
+                "--cycle-start", self.started_at.isoformat(),
+                "--resolved-next-run", target.isoformat(),
+                "--verification-time", now.isoformat(),
+            ],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(4, payload["review_stage"])
+        self.assertEqual(self.now_utc.isoformat(), payload["cycle_started_at_utc"])
+        self.assertEqual(target.isoformat(), payload["target_at_utc"])
+        self.assertEqual("accept", payload["next_run"]["decision"])
 
 
 if __name__ == "__main__":

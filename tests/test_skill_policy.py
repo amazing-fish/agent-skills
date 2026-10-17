@@ -289,8 +289,8 @@ class SkillPolicyTests(unittest.TestCase):
                 for fragment in required_fragments:
                     self.assertIn(fragment, branch_lines[label])
                 for duplicated_post_action in (
-                    "one-shot 6-minute timer",
-                    "one-shot 6-minute review cycle",
+                    "one-shot timer",
+                    "review wait sequence",
                 ):
                     self.assertNotIn(
                         duplicated_post_action,
@@ -298,8 +298,8 @@ class SkillPolicyTests(unittest.TestCase):
                     )
 
         common_post_action = (
-            "After any non-passed classification, end the refresh by setting "
-            "one new one-shot 6-minute timer under the contract above."
+            "After a pending classification, schedule only the next future stage "
+            "under the timer contract if one remains."
         )
         self.assertEqual(1, review_cycle.count(common_post_action))
         self.assertGreater(
@@ -313,7 +313,9 @@ class SkillPolicyTests(unittest.TestCase):
             if line.startswith("- 评审节拍：")
         )
         for required_summary in (
-            "一次性 6 分钟定时器",
+            "3+2+1+4 分钟",
+            "第 3、5、6、10 分钟",
+            "一次性定时器",
             "触发后刷新一次",
             "目标本地时间",
             "目标时区",

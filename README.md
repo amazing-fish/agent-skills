@@ -63,7 +63,7 @@ skills/
 - 定义：[skills/execute-github-issue-pr-workflow/SKILL.md](skills/execute-github-issue-pr-workflow/SKILL.md)
 - 默认模式：人工批准当前 PR 合入并进入下一 Issue
 - 自动暂存模式：低风险 PR 保持未合并并继续推进，最终由人类统一决定方向
-- 评审节拍：每次只设一个一次性 6 分钟定时器；触发后刷新一次，并报告目标本地时间、目标时区和已核验 next run。完整规则以 [workflow Skill](skills/execute-github-issue-pr-workflow/SKILL.md) 为事实来源
+- 评审节拍：依次等待 3+2+1+4 分钟，累计第 3、5、6、10 分钟检查；每次只设一个一次性定时器，触发后刷新一次，完成即停止，第 10 分钟仍未完成则记录 pending。跨会话保留阶段和截止时间，并报告目标本地时间、目标时区和已核验 next run。完整规则以 [workflow Skill](skills/execute-github-issue-pr-workflow/SKILL.md) 为事实来源
 
 ### douyin-video-analysis
 
