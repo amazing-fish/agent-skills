@@ -41,6 +41,7 @@ skills/
 - 定义：[skills/optimize-prompt/SKILL.md](skills/optimize-prompt/SKILL.md)
 - 模式：`source-only` 用于纯改写；`context-grounded` 用于需要当前 workspace、repo、file、PR、Issue 或连接来源证据的改写
 - 边界：只生成 prompt，不执行其中的实现、发布、发送、部署或其他外部动作
+- 目标：只生成交给 Claude Code 的 prompt；保留原始范围和授权，简单任务保持简洁。
 
 ### explain-diff-for-human-review
 
