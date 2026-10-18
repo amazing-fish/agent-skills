@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import unittest
 
 
@@ -23,6 +24,25 @@ class HumanDecisionBriefPolicyTests(unittest.TestCase):
         ):
             with self.subTest(required=required):
                 self.assertIn(required, self.instructions)
+
+    def test_automatic_staging_accepts_the_report_positive_verdict(self):
+        workflow = (
+            ROOT / "skills" / "execute-github-issue-pr-workflow" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        verdict = re.search(
+            r"^- \*\*结论：\*\* `([^`]+)`", self.instructions, re.MULTILINE
+        )
+        gate = workflow.split("## Gate merge or staging\n", 1)[1].split(
+            "\n## ", 1
+        )[0]
+        accepted = re.search(r"stage only when the report says `([^`]+)`", gate)
+        self.assertIsNotNone(verdict)
+        self.assertIsNotNone(accepted)
+        self.assertEqual(verdict.group(1), accepted.group(1))
+        self.assertIn(
+            "with no confirmed medium-or-higher risk or unresolved decision.", gate
+        )
+        self.assertIn("Automatic staging never authorizes merging.", gate)
 
     def test_truthful_evidence_and_regression_boundary(self):
         for required in (

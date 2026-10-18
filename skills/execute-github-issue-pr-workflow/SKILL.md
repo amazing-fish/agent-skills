@@ -93,7 +93,7 @@ Require all of the following:
 - validation and docs match the current code;
 - the installed `explain-diff-for-human-review` skill produces a report for the current diff.
 
-In default mode, present the report for the current base and HEAD and request approval naming that PR, base SHA, and HEAD SHA; any base or HEAD change invalidates the report and approval. Merge only in a later user turn. In automatic staging mode, stage only when the report says `可以合入` with no confirmed medium-or-higher risk or unresolved decision. Automatic staging never authorizes merging.
+In default mode, present the report for the current base and HEAD and request approval naming that PR, base SHA, and HEAD SHA; any base or HEAD change invalidates the report and approval. Merge only in a later user turn. In automatic staging mode, stage only when the report says `建议合入` with no confirmed medium-or-higher risk or unresolved decision. Automatic staging never authorizes merging.
 
 Immediately before an authorized merge, require base and HEAD to equal the reported and approved SHAs, then recheck PR state, checks, threads, and mergeability. Never bypass protection or force-push.
 
