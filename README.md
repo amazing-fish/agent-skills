@@ -28,7 +28,7 @@ skills/
 
 - `optimize-prompt`：负责目标整理，把原始要求变成可复核、可直接使用的 prompt；可按需读取当前状态，但不执行 prompt 内任务。
 - `execute-github-issue-pr-workflow`：负责流程编排，包括受控的 Issue-to-PR 推进、按需 goal-prompt preflight、Review、评论修复与合并授权。
-- `explain-diff-for-human-review`：负责最终人工审查证据，为当前 diff 生成独立、可复核的 HTML 报告。
+- `explain-diff-for-human-review`：为已提交的 PR 生成一屏可读的合入决策摘要和可按需核对的 HTML 证据。
 
 复杂任务或存在会实质改变实现的歧义时，可先由独立子 Agent 生成 goal prompt；简单、范围清楚的 Issue 直接进入现有流程。prompt 只作为执行 brief，事实需要复核，是否继续实现仍只取决于用户原始请求的授权。
 
@@ -44,8 +44,9 @@ skills/
 
 ### explain-diff-for-human-review
 
-将 commit、branch、PR/MR、staged 或 working tree diff 转换为供人类检视的自包含 HTML 报告。
+面向已提交的 GitHub PR，先说明实际行为变化、收益、取舍、验证和风险，再给出人工合入决策建议；不把工作区快照作为主场景。
 
+- 默认一屏简报：建议合入 / 需要修改 / 证据不足，暂缓决定；不再默认输出影响矩阵、替代方案和理解问答
 - 可选独立子 Agent 只读风险审查；能力不可用或失败时回退到单 Agent，并在报告中披露覆盖和证据缺口
 - 生成的单文件 HTML 通过语义颜色 token 跟随系统浅色/深色偏好，并保持独立的节墨打印样式
 
@@ -53,7 +54,7 @@ skills/
 - 来源：[GitHubxsy/agent-skills](https://github.com/GitHubxsy/agent-skills/tree/main/skills/explain-diff-for-human-review)
 - 上游版本：`110c9dd9e30d278edbfc30fc6bac05cdf4e4afd3`
 - 上游许可证：Apache-2.0
-- 本地修订：[#2](../../issues/2) 报告输出路径；[#3](../../issues/3) 大规模 diff；[#7](../../issues/7) GitHub 固定链接证据策略；[#10](../../issues/10) 可选独立子 Agent 审查；[#15](../../issues/15) 明暗主题视觉基线
+- 本地修订：[#2](../../issues/2) 报告输出路径；[#3](../../issues/3) 大规模 diff；[#7](../../issues/7) GitHub 固定链接证据策略；[#10](../../issues/10) 可选独立子 Agent 审查；[#15](../../issues/15) 明暗主题视觉基线；[#23](../../issues/23) 以合入决策为中心的精简报告
 
 
 ### execute-github-issue-pr-workflow
