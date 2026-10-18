@@ -1,0 +1,4 @@
+interface:
+  display_name: "WeChat Article Fetch"
+  short_description: "Fetch WeChat articles into structured Markdown files"
+  default_prompt: "Use $wechat-article-fetch to fetch this WeChat article into a structured Markdown artifact."
