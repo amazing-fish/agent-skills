@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (
     ROOT
     / "skills"
-    / "explain-diff-for-human-review"
+    / "report-for-human"
     / "scripts"
     / "validate_independent_review.py"
 )

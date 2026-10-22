@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_DIR = ROOT / "skills" / "explain-diff-for-human-review" / "scripts"
+SCRIPT_DIR = ROOT / "skills" / "report-for-human" / "scripts"
 
 
 def _load_module(name: str):
@@ -46,7 +46,7 @@ class ResolveReportPathTests(unittest.TestCase):
                 target="PR #2 / output",
                 output_path=temp,
             )
-            self.assertEqual(Path(result.path).name, "explain-diff-PR-2-output.html")
+            self.assertEqual(Path(result.path).name, "report-PR-2-output.html")
             self.assertEqual(result.source, "explicit")
 
     def test_repository_precedes_workspace(self):
@@ -60,7 +60,7 @@ class ResolveReportPathTests(unittest.TestCase):
             )
             self.assertEqual(
                 Path(result.path),
-                (repository / "reports" / "explain-diff-commit-abc.html").resolve(),
+                (repository / "reports" / "report-commit-abc.html").resolve(),
             )
             self.assertEqual(result.source, "repository")
 

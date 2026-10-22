@@ -1,19 +1,4 @@
----
-name: explain-diff-for-human-review
-description: 将已提交的 GitHub PR 解释成人类合入决策 HTML；也用于用户明确要求用 HTML 图解系统流程、架构、责任边界、跨组件时序或故障原因的汇报。默认 PR 一屏简报，复杂讲解按需使用流程图、泳道、时间线与本地状态演示；不代替 Code Review、真实验证或人工授权。
----
-
-# PR 人工合入决策报告
-
-> 来源于 `GitHubxsy/agent-skills`，经 `amazing-fish/agent-skills` 修改。上游版本、许可证和修改记录见仓库根目录 `sources.lock.json`。
-
-目标不是复述 diff，而是让未参与实现的决策者用最少阅读回答：**解决了什么、方案是否合理、证据是否足够、现在该怎么决定**。先深入核对，再简短表达；发现复杂不等于报告冗长。
-
-## 按读者任务选择模式
-
-- **`decision-brief`（默认）：** 用户要理解或决定是否合入 PR，沿用下方一屏简报；仅要求 HTML 不自动升级为长报告。
-- **`visual-explanation`（按需）：** 用户明确说“没看懂，画清楚”“图解流程／架构／责任边界”“不要全是文字”，或要求系统讲解型 HTML，读取 [references/visual-explanation.md](references/visual-explanation.md)，以主图和具体场景组织内容；只在此模式加载 `assets/visual-explanation.css`。
-- 用户同时要理解机制和判断 PR 时，保留固定 base/head、首屏结论及可见阻断项，再按需加图；纯系统讲解不强造合入结论或虚构 PR。模式选择不授予代码修改、发布或合入权限。
+# PR 审查与判断
 
 ## 先核实，再判断
 
@@ -40,17 +25,7 @@ description: 将已提交的 GitHub PR 解释成人类合入决策 HTML；也用
 - 不复制仓库源码、密钥、令牌、私有接口、身份信息或大量日志到报告；HTML 转义所有来自代码、Issue、评论和测试的外部文本。固定链接保留原仓库访问控制。
 - 对二进制、生成文件、重命名、缺失 patch 或未审查区域，明确标注覆盖边界；不声称已检查无法读取的内容。只为可访问且经核实的仓库地址生成链接。
 
-## 交付自包含 HTML
-
-- 默认路径：用户指定文件或目录 → 当前仓库 `reports/explain-diff-<target>.html` → 当前可写工作区 `reports/` → 临时目录 `reports/`；若有 `scripts/resolve_report_path.py`，优先使用。生成物不写回 Skill 安装目录，也不提交业务仓库。
-- 将 `assets/report-theme.css` 作为简洁样式基线，**内联到 HTML 的 `<style>`**；用 `prefers-color-scheme: dark` 适配系统主题，同时保留独立打印样式。无需远程 JS、字体、图片、CSS 或第三方报告服务。
-- 优先单列、清楚的标题与段落；长证据使用原生 `<details>`，保持可键盘操作、可打印、移动端可读。核查桌面和移动端宽度、锚点、对比度和外部资源；不要为视觉效果牺牲决策信息密度。
-- 返回实际报告的绝对路径，并在回复中给出一句结论、最关键的证据与尚未解决的风险。若运行环境无法生成 HTML，说明限制并直接交付同结构的简短决策摘要，不伪称文件已生成。
 
 ## 可选独立审查
 
 仅在用户要求或高风险确有价值、且环境支持子 Agent 时启用。主 Agent 固定 base/head 和实际审查范围，子 Agent **只读**、**不修改产品代码**，**不要提供主 Agent 的预期结论**；结果按 `references/independent-review-contract.md` 与 `scripts/validate_independent_review.py` 校验，逐项复核后才采用。能力不可用、输出无效、超时或失败时**单 Agent 回退**；简要披露是否采用、覆盖范围、未检查部分与不确定性，不因此增加默认报告篇幅。
-
-## 完成前核查
-
-检查需求是否逐项对齐、关键结论是否有固定版本证据、验证来源是否准确、遗漏是否如实披露、建议与风险是否一致。确认 HTML 非空、没有私密源码或外部依赖，正文能让决策者快速判断；未经授权绝不自动合并。

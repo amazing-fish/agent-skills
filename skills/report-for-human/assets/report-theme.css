@@ -1,6 +1,8 @@
 :root {
   color-scheme: light dark;
-  --color-canvas: #f3f6f9;
+  --color-canvas: #f3f5f8;
+  --color-accent: #315ee9;
+  --color-purple-bg: #f3edfc;
   --color-surface: #ffffff;
   --color-surface-muted: #eaf0f6;
   --color-text: #182235;
@@ -25,6 +27,8 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --color-canvas: #0d1117;
+    --color-accent: #9bb6ff;
+    --color-purple-bg: #2b213f;
     --color-surface: #151b23;
     --color-surface-muted: #1d2631;
     --color-text: #e6edf3;
@@ -304,6 +308,8 @@ summary {
   :root {
     color-scheme: light;
     --color-canvas: #ffffff;
+    --color-accent: #164788;
+    --color-purple-bg: #ffffff;
     --color-surface: #ffffff;
     --color-surface-muted: #f2f2f2;
     --color-text: #111111;

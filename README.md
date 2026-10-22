@@ -28,7 +28,7 @@ skills/
 
 - `optimize-prompt`：负责目标整理，把原始要求变成可复核、可直接使用的 prompt；可按需读取当前状态，但不执行 prompt 内任务。
 - `execute-github-issue-pr-workflow`：负责流程编排，包括受控的 Issue-to-PR 推进、按需 goal-prompt preflight、Review、评论修复与合并授权。
-- `explain-diff-for-human-review`：为已提交的 PR 生成一屏可读的合入决策摘要和可按需核对的 HTML 证据。
+- `report-for-human`：解释改动、要求、现状与机制，并在新 PR 创建后主动生成简洁、可核验的可视化 HTML 汇报。
 
 复杂任务或存在会实质改变实现的歧义时，可先由独立子 Agent 生成 goal prompt；简单、范围清楚的 Issue 直接进入现有流程。prompt 只作为执行 brief，事实需要复核，是否继续实现仍只取决于用户原始请求的授权。
 
@@ -42,21 +42,18 @@ skills/
 - 模式：`source-only` 用于纯改写；`context-grounded` 用于需要当前 workspace、repo、file、PR、Issue 或连接来源证据的改写
 - 边界：只生成 prompt，不执行其中的实现、发布、发送、部署或其他外部动作
 
-### explain-diff-for-human-review
+### report-for-human
 
-默认面向已提交的 GitHub PR，先说明行为变化、验证和风险，再给出合入建议。用户明确要求系统、流程或责任边界图解时，使用同一技能的 `visual-explanation` 模式。
+由 `explain-diff-for-human-review` 重构。用户不理解改动、要求、现状或责任边界时直接触发；新 PR 创建后主动生成 HTML，并随审查事实变化更新。
 
-- `decision-brief`（默认）：一屏简报，给出建议合入 / 需要修改 / 证据不足，暂缓决定；仅要求 HTML 不会自动变成长报告
-- `visual-explanation`（按需）：主图、责任泳道、时间线及可选状态演示；区分用户控制范围、上游行为、取证快照和模拟状态，完整证据按需展开
-- 可选独立子 Agent 只读风险审查；能力不可用或失败时回退到单 Agent，并在报告中披露覆盖和证据缺口
-- 生成的单文件 HTML 通过语义颜色 token 跟随系统浅色/深色偏好，并保持独立的节墨打印样式
-
-- 定义：[skills/explain-diff-for-human-review/SKILL.md](skills/explain-diff-for-human-review/SKILL.md)
-- 来源：[GitHubxsy/agent-skills](https://github.com/GitHubxsy/agent-skills/tree/main/skills/explain-diff-for-human-review)
-- 上游版本：`110c9dd9e30d278edbfc30fc6bac05cdf4e4afd3`
-- 上游许可证：Apache-2.0
-- 本地修订：[#2](../../issues/2) 报告输出路径；[#3](../../issues/3) 大规模 diff；[#7](../../issues/7) GitHub 固定链接证据策略；[#10](../../issues/10) 可选独立子 Agent 审查；[#15](../../issues/15) 明暗主题视觉基线；[#23](../../issues/23) 以合入决策为中心的精简报告；[#51](../../issues/51) 按需系统图解模式
-
+- 四类主问题：改动前后对照、要求与验收关系、阶段与卡点、机制与责任图。纯讲解不虚构 PR 或合入判断。
+- 共用主题、布局、生成器、四份去项目化 JSON 示例和完整 HTML/预览，让其他 Agent 复现同一视觉语言；先取证，再填写呈现数据。
+- 默认首屏结论加一个主视觉，详细证据折叠；明暗主题、窄屏、键盘和打印均需检查。
+- 保留固定版本证据、可选独立只读审查和合入授权边界；报告不执行外部操作。
+- 定义：[skills/report-for-human/SKILL.md](skills/report-for-human/SKILL.md)
+- 视觉锚点：[完整样例](skills/report-for-human/assets/reference-report.html) · [预览](skills/report-for-human/assets/reference-preview.png)
+- 原始来源：[GitHubxsy/agent-skills](https://github.com/GitHubxsy/agent-skills/tree/main/skills/explain-diff-for-human-review)，原 blob `110c9dd9e30d278edbfc30fc6bac05cdf4e4afd3`；Apache-2.0，见 `sources.lock.json`。
+- 本地修订：#2/#3 输出与大差异、#7 固定证据、#10 独立审查、#15 主题、#23 精简判断、#51 图解、[#53](../../issues/53) 汇报入口与视觉基线重构。
 
 ### execute-github-issue-pr-workflow
 

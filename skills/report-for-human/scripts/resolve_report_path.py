@@ -21,7 +21,7 @@ def report_filename(target: str) -> str:
     normalized = re.sub(r"[^A-Za-z0-9._-]+", "-", target).strip(".-")
     if not normalized:
         normalized = "target"
-    return f"explain-diff-{normalized[:120]}.html"
+    return f"report-{normalized[:120]}.html"
 
 
 def resolve_report_path(

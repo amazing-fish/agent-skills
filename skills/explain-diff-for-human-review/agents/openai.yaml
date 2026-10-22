@@ -1,4 +1,0 @@
-interface:
-  display_name: "Diff 与系统图解汇报"
-  short_description: "默认生成简短 PR 合入决策 HTML，按需图解系统流程、责任边界与时序"
-  default_prompt: "使用 $explain-diff-for-human-review 核对证据，按我的问题选择简报或图解模式并交付可直接打开的 HTML。"
