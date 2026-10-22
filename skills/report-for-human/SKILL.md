@@ -46,6 +46,7 @@ python <skill-root>/scripts/render_report.py --input <verified-report.json> --ou
 - 首屏保留一个结果标题、一两句回答、一个当前状态或关键判断；随后一个主视觉、最多一两项下一步、一个折叠证据区。每张卡片表达一个关系，不把所有段落装成卡片。
 - 生成器不能表达任务的关键分支时，沿用同一主题与组件扩展 HTML/SVG。读取 [讲解图式](references/explanation-patterns.md)，明确箭头传递什么、条件如何改变结果；不为装饰加图。
 - 自定义时把 `assets/report-theme.css` 与 `assets/report-layout.css` **内联到 HTML 的 `<style>`**；根节点使用 `.human-report`，保留 `prefers-color-scheme: dark`、打印、焦点与窄屏规则。不要从旧示例继承项目版本号、事实、标志或证据链接。
+- 自定义 Prompt/代码等长文本块时，字色与底色须成对指定；沿用布局中的 `pre` 配色，让内部 `code` 继承字色，展开后检查明暗主题和打印可读性。
 
 ## 把文字留在该在的位置
 
