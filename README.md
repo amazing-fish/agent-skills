@@ -44,9 +44,10 @@ skills/
 
 ### explain-diff-for-human-review
 
-面向已提交的 GitHub PR，先说明实际行为变化、收益、取舍、验证和风险，再给出人工合入决策建议；不把工作区快照作为主场景。
+默认面向已提交的 GitHub PR，先说明行为变化、验证和风险，再给出合入建议。用户明确要求系统、流程或责任边界图解时，使用同一技能的 `visual-explanation` 模式。
 
-- 默认一屏简报：建议合入 / 需要修改 / 证据不足，暂缓决定；不再默认输出影响矩阵、替代方案和理解问答
+- `decision-brief`（默认）：一屏简报，给出建议合入 / 需要修改 / 证据不足，暂缓决定；仅要求 HTML 不会自动变成长报告
+- `visual-explanation`（按需）：主图、责任泳道、时间线及可选状态演示；区分用户控制范围、上游行为、取证快照和模拟状态，完整证据按需展开
 - 可选独立子 Agent 只读风险审查；能力不可用或失败时回退到单 Agent，并在报告中披露覆盖和证据缺口
 - 生成的单文件 HTML 通过语义颜色 token 跟随系统浅色/深色偏好，并保持独立的节墨打印样式
 
@@ -54,7 +55,7 @@ skills/
 - 来源：[GitHubxsy/agent-skills](https://github.com/GitHubxsy/agent-skills/tree/main/skills/explain-diff-for-human-review)
 - 上游版本：`110c9dd9e30d278edbfc30fc6bac05cdf4e4afd3`
 - 上游许可证：Apache-2.0
-- 本地修订：[#2](../../issues/2) 报告输出路径；[#3](../../issues/3) 大规模 diff；[#7](../../issues/7) GitHub 固定链接证据策略；[#10](../../issues/10) 可选独立子 Agent 审查；[#15](../../issues/15) 明暗主题视觉基线；[#23](../../issues/23) 以合入决策为中心的精简报告
+- 本地修订：[#2](../../issues/2) 报告输出路径；[#3](../../issues/3) 大规模 diff；[#7](../../issues/7) GitHub 固定链接证据策略；[#10](../../issues/10) 可选独立子 Agent 审查；[#15](../../issues/15) 明暗主题视觉基线；[#23](../../issues/23) 以合入决策为中心的精简报告；[#51](../../issues/51) 按需系统图解模式
 
 
 ### execute-github-issue-pr-workflow
