@@ -1,6 +1,6 @@
-# 图解讲解型 HTML
+# 流程、责任、要求与现状的图式
 
-沿用 SKILL.md 的取证、保密与交付边界；本文件扩展呈现方式，不覆盖 PR 的审查或授权规则。默认简报不必加载本文件。
+沿用 SKILL.md 的取证、保密与交付边界；本文件扩展呈现方式，不覆盖 PR 的审查或授权规则。按主问题选择需要的图式，不要求每份报告都展开整个系统。
 
 ## 先把关系讲对
 
@@ -27,7 +27,7 @@
 - 保持参与方颜色映射一致；状态成功/待处理/失败使用独立的语义标签，别把某个参与方永久画成失败方。各方颜色只服务辨认，不暗示控制权限。
 - 桌面主图最多约五个横向节点；再多则分组、转为纵向或拆图。SVG 用 title/desc 和可读标签，不以装饰性指标代替解释。
 - 采用宽约 1100–1240px 的主内容区，正文至少 16px。职责、时序、场景控制都靠近主图；证据、完整 SHA 和长命令放原生 `<details>`。核心结论与实质限制保持可见。
-- 从 `assets/report-theme.css` 内联主题，再内联 `assets/visual-explanation.css`。图解根节点使用 `class="visual-report"`；布局类只在此节点下生效。主题切换、打印、窄屏和键盘操作仍需可用。不要让图解宽布局覆盖默认简报。
+- 从 `assets/report-theme.css` 内联主题，再内联 `assets/report-layout.css`。图解根节点使用 `class="human-report"`；布局类只在此节点下生效。主题切换、打印、窄屏和键盘操作仍需可用。不要让图解宽布局覆盖紧凑改动汇报。
 
 ## 只加入能解释因果的交互
 
@@ -44,16 +44,16 @@
 结构可调；下面是布局语义，不是每次都要填满的模板。
 
 ```html
-<main class="visual-report">
-  <header class="visual-hero"><h1>有证据支持的结果</h1><p>问题、短回答与关键限制</p></header>
-  <section class="visual-panel" aria-labelledby="flow-title">
+<main class="human-report">
+  <header class="rf-hero"><h1>有证据支持的结果</h1><p>问题、短回答与关键限制</p></header>
+  <section class="rf-panel" aria-labelledby="flow-title">
     <h2 id="flow-title">核心关系</h2>
-    <div class="visual-controls" role="group" aria-label="场景"><!-- 可选状态按钮 --></div>
-    <div class="visual-flow"><svg role="img" aria-labelledby="diagram-title diagram-desc"><!-- 实际主图 --></svg></div>
+    <div class="rf-controls" role="group" aria-label="场景"><!-- 可选状态按钮 --></div>
+    <div class="rf-flow"><svg role="img" aria-labelledby="diagram-title diagram-desc"><!-- 实际主图 --></svg></div>
     <p aria-live="polite"><!-- 当前分支结论 --></p>
   </section>
-  <section class="visual-owners"><!-- 按需说明各方职责 --></section>
-  <ol class="visual-timeline"><!-- 按需说明历史与计划 --></ol>
+  <section class="rf-actions"><!-- 按需说明各方职责 --></section>
+  <ol class="rf-stages"><!-- 按需说明历史与计划 --></ol>
   <details><summary>证据与适用边界</summary><!-- 固定版本、来源与验证范围 --></details>
 </main>
 ```

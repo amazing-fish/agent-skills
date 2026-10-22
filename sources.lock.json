@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "skills": {
-    "explain-diff-for-human-review": {
+    "report-for-human": {
       "source_repository": "GitHubxsy/agent-skills",
       "source_path": "skills/explain-diff-for-human-review/SKILL.md",
       "source_ref": "main",
@@ -20,26 +20,40 @@
           10,
           15,
           23,
-          51
+          51,
+          53
         ],
-        "notice_location": "skills/explain-diff-for-human-review/SKILL.md",
+        "notice_location": "skills/report-for-human/SKILL.md",
         "added_files": [
-          "skills/explain-diff-for-human-review/scripts/resolve_report_path.py",
-          "skills/explain-diff-for-human-review/scripts/classify_diff_size.py",
-          "skills/explain-diff-for-human-review/scripts/validate_independent_review.py",
-          "skills/explain-diff-for-human-review/references/independent-review-contract.md",
-          "skills/explain-diff-for-human-review/assets/report-theme.css",
+          "skills/report-for-human/agents/openai.yaml",
+          "skills/report-for-human/assets/reference-preview.png",
+          "skills/report-for-human/assets/reference-report.html",
+          "skills/report-for-human/assets/report-layout.css",
+          "skills/report-for-human/assets/report-theme.css",
+          "skills/report-for-human/examples/change.json",
+          "skills/report-for-human/examples/mechanism.json",
+          "skills/report-for-human/examples/requirements.json",
+          "skills/report-for-human/examples/status.json",
+          "skills/report-for-human/references/design-sources.md",
+          "skills/report-for-human/references/evaluation.md",
+          "skills/report-for-human/references/evidence.md",
+          "skills/report-for-human/references/explanation-patterns.md",
+          "skills/report-for-human/references/independent-review-contract.md",
+          "skills/report-for-human/references/pr-review.md",
+          "skills/report-for-human/references/visual-design.md",
+          "skills/report-for-human/scripts/classify_diff_size.py",
+          "skills/report-for-human/scripts/render_report.py",
+          "skills/report-for-human/scripts/resolve_report_path.py",
+          "skills/report-for-human/scripts/validate_independent_review.py",
           "tests/test_explain_diff_policy.py",
           "tests/test_independent_review_policy.py",
-          "tests/test_skill_policy.py",
+          "tests/test_report_policy.py",
+          "tests/test_report_renderer.py",
           "tests/test_report_theme_policy.py",
-          "tests/test_explain_diff_brief_policy.py",
-          "skills/explain-diff-for-human-review/references/visual-explanation.md",
-          "skills/explain-diff-for-human-review/assets/visual-explanation.css",
-          "skills/explain-diff-for-human-review/agents/openai.yaml",
-          "tests/test_visual_report_policy.py"
+          "tests/test_skill_policy.py"
         ],
-        "modified_at": "2026-10-22"
+        "modified_at": "2026-10-22",
+        "previous_local_name": "explain-diff-for-human-review"
       }
     }
   }

@@ -6,7 +6,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL_DIR = ROOT / "skills" / "explain-diff-for-human-review"
+SKILL_DIR = ROOT / "skills" / "report-for-human"
 THEME_PATH = SKILL_DIR / "assets" / "report-theme.css"
 
 

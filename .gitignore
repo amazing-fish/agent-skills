@@ -1,6 +1,7 @@
 # Generated reports
 **/reports/
 *.html
+!skills/report-for-human/assets/reference-report.html
 
 # Credentials and local environment
 .env

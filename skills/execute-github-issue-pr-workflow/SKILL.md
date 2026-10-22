@@ -1,6 +1,6 @@
 ---
 name: execute-github-issue-pr-workflow
-description: Execute a lightweight governed GitHub Issue-to-PR delivery loop with an optional independent goal-prompt preflight, focused implementation, clickable commit and PR links, staged 3+2+1+4-minute Codex review waits, comment resolution, human-readable diff evidence, controlled merge or staging, Issue reconciliation, and documentation updates. Use when repeatedly advancing repository Issues, shepherding PRs, handling Codex feedback, or following the user's established GitHub workflow.
+description: Execute a lightweight governed GitHub Issue-to-PR delivery loop with an optional independent goal-prompt preflight, focused implementation, clickable commit and PR links, staged 3+2+1+4-minute Codex review waits, comment resolution, visual human reports, controlled merge or staging, Issue reconciliation, and documentation updates. Use when repeatedly advancing repository Issues, shepherding PRs, handling Codex feedback, or following the user's established GitHub workflow.
 ---
 
 # Execute GitHub Issue–PR Workflow
@@ -50,6 +50,8 @@ The optimizer's rewrite-only and separate-follow-up boundaries govern the standa
 4. Open or update a concise PR with the linked Issue, purpose, changes, exclusions, risks, validation, and screenshots when useful.
 5. Immediately return the full clickable PR URL after creation or material update.
 
+After creating each new PR, use the installed `report-for-human` skill to immediately deliver a concise visual HTML report. Show current changes, evidence and limitations even while CI or review is pending; refresh the same report after material state changes. This report does not expand implementation or merge authority.
+
 ## Check Codex Review efficiently
 
 ### Schedule the review timer safely
@@ -91,7 +93,7 @@ Require all of the following:
 - the PR currently shows the Codex bot's 👍;
 - no blocking review decision, unresolved feedback, conflict, or scope decision remains;
 - validation and docs match the current code;
-- the installed `explain-diff-for-human-review` skill produces a report for the current diff.
+- the installed `report-for-human` skill produces a report for the current diff.
 
 In default mode, present the report for the current base and HEAD and request approval naming that PR, base SHA, and HEAD SHA; any base or HEAD change invalidates the report and approval. Merge only in a later user turn. In automatic staging mode, stage only when the report says `建议合入` with no confirmed medium-or-higher risk or unresolved decision. Automatic staging never authorizes merging.
 
@@ -103,4 +105,4 @@ Immediately before an authorized merge, require base and HEAD to equal the repor
 2. Close or update the Issue only for landed work and within the user's authorization; keep staged Issues open. Return the Issue URL and residual work.
 3. Update docs when commands, contracts, schemas, defaults, operations, safety boundaries, or user-visible behavior change.
 4. After every two merged feature Issues, or two staged feature Issues in automatic staging mode, refresh roadmap/status docs and reconcile related Issues. Label unmerged work as `staged` and link its PR and exact HEAD.
-5. Stop instead of guessing when authorization, the diff skill, review success, checks, permissions, conflicts, credentials, or a material scope decision blocks progress.
+5. Stop instead of guessing when authorization, the report skill, review success, checks, permissions, conflicts, credentials, or a material scope decision blocks progress.

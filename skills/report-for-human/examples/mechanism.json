@@ -1,0 +1,190 @@
+{
+  "scope": "示例工作台 / 虚构案例",
+  "as_of": "2026-01-08 10:20（UTC+8）· 模拟数据",
+  "limitations": [
+    "本页全部事实为虚构示例，不代表真实项目、规范或客户端复现。"
+  ],
+  "evidence": [
+    {
+      "label": "示例输入",
+      "detail": "所有参与方、版本、时间与检查均为教学用虚构数据。实际任务应替换为已读取的来源及证据边界。"
+    }
+  ],
+  "kind": "mechanism",
+  "title": "新包已到，版本说明还停在另一条路",
+  "summary": "版本查询与说明采集使用不同来源。发布物就位，不代表采集快照和客户端都已刷新。",
+  "eyebrow": "一个发布 · 两条数据路径",
+  "spotlight": {
+    "label": "这个示例的观察",
+    "value": "包 v3 / 说明 v2",
+    "detail": "同一发布的包与说明，由不同系统在不同时间读取。本页均为模拟数据。"
+  },
+  "visual_title": "顺着箭头看：谁提供、谁采集、谁展示",
+  "graph": {
+    "owners": [
+      "你的项目",
+      "发布平台",
+      "上游采集",
+      "用户客户端"
+    ],
+    "nodes": [
+      {
+        "id": "code",
+        "owner": 0,
+        "row": 0,
+        "title": "应用 v3",
+        "detail": "项目已发布新包"
+      },
+      {
+        "id": "notes",
+        "owner": 0,
+        "row": 1,
+        "title": "版本说明 v3",
+        "detail": "项目已生成对应正文"
+      },
+      {
+        "id": "package",
+        "owner": 1,
+        "row": 0,
+        "title": "注册表 v3",
+        "detail": "新包可供下载"
+      },
+      {
+        "id": "release",
+        "owner": 1,
+        "row": 1,
+        "title": "文档 v3",
+        "detail": "正文可独立读取"
+      },
+      {
+        "id": "snapshot",
+        "owner": 2,
+        "row": 1,
+        "title": "快照仍为 v2",
+        "detail": "这条记录尚未重新采集"
+      },
+      {
+        "id": "update",
+        "owner": 3,
+        "row": 0,
+        "title": "显示 v3 可更新",
+        "detail": "查询注册表的版本路径"
+      },
+      {
+        "id": "compare",
+        "owner": 3,
+        "row": 1,
+        "title": "快照与本地比较",
+        "detail": "本地 v2；快照必须比本地新"
+      },
+      {
+        "id": "result",
+        "owner": 3,
+        "row": 2,
+        "title": "显示提交记录",
+        "detail": "旧快照触发回退分支"
+      }
+    ],
+    "edges": [
+      {
+        "from": "code",
+        "to": "package",
+        "label": "上传新包"
+      },
+      {
+        "from": "notes",
+        "to": "release",
+        "label": "上传说明正文"
+      },
+      {
+        "from": "package",
+        "to": "update",
+        "label": "独立查询最新版本"
+      },
+      {
+        "from": "release",
+        "to": "snapshot",
+        "label": "按计划采集说明"
+      },
+      {
+        "from": "snapshot",
+        "to": "compare",
+        "label": "分发说明快照"
+      },
+      {
+        "from": "compare",
+        "to": "result",
+        "label": "快照不比本地新 → 回退"
+      }
+    ]
+  },
+  "scenarios": [
+    {
+      "label": "快照尚未采到",
+      "basis": "模拟",
+      "summary": "新包已公开，说明快照仍为 v2；客户端按旧快照回退到提交记录。",
+      "active_nodes": []
+    },
+    {
+      "label": "假设采集完成",
+      "basis": "模拟",
+      "summary": "假设快照更新为 v3 且已被客户端读取，本地仍为 v2，此时选择版本说明。",
+      "titles": {
+        "snapshot": "快照已为 v3",
+        "result": "显示版本说明"
+      },
+      "active_nodes": [
+        "notes",
+        "release",
+        "snapshot",
+        "compare",
+        "result"
+      ],
+      "details": {
+        "snapshot": "模拟：此条说明已重新采集",
+        "compare": "本地 v2；快照 v3 比本地新",
+        "result": "示例筛选器选中版本说明"
+      },
+      "edge_labels": {
+        "compare|result": "快照比本地新 → 选说明"
+      }
+    },
+    {
+      "label": "假设本地也升级",
+      "basis": "模拟",
+      "summary": "假设本地与快照同为 v3，按示例规则仍走同版本回退；不代表真实界面有更新入口。",
+      "titles": {
+        "snapshot": "快照已为 v3",
+        "compare": "本地也已为 v3",
+        "result": "同版本回退",
+        "update": "本地也已为 v3"
+      },
+      "active_nodes": [
+        "snapshot",
+        "compare",
+        "result"
+      ],
+      "details": {
+        "snapshot": "模拟：此条说明已重新采集",
+        "compare": "本地 v3；同版本不满足新于条件",
+        "result": "示例规则按同版本回退",
+        "update": "模拟：界面未必提供待更新入口"
+      },
+      "edge_labels": {
+        "compare|result": "快照等于本地 → 回退"
+      }
+    }
+  ],
+  "next_actions": [
+    {
+      "owner": "你的项目",
+      "action": "核对包与说明已就位",
+      "effect": "项目能够控制发布物，无法据此控制上游的采集时刻。"
+    },
+    {
+      "owner": "上游 / 客户端",
+      "action": "核对单条快照与读取结果",
+      "effect": "用实际采集时间和接口响应定位当前卡点。"
+    }
+  ]
+}
