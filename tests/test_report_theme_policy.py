@@ -82,6 +82,17 @@ class ReportThemePolicyTests(unittest.TestCase):
         self.assertEqual(set(light), set(dark))
         self.assertEqual(set(light), set(print_theme))
 
+    def test_report_long_text_pairs_its_colors_and_nested_code_inherits(self):
+        layout = (SKILL_DIR / "assets" / "report-layout.css").read_text(encoding="utf-8")
+        pre = re.search(r"\.human-report pre\s*\{([^}]*)\}", layout)
+        self.assertIsNotNone(pre)
+        self.assertIn("color: var(--color-text);", pre.group(1))
+        self.assertIn("background: var(--color-surface-muted);", pre.group(1))
+        code = re.search(r"\.human-report pre code\s*\{([^}]*)\}", layout)
+        self.assertIsNotNone(code)
+        self.assertIn("color: inherit;", code.group(1))
+        self.assertIn("background: transparent;", code.group(1))
+
     def test_theme_covers_report_components_responsiveness_focus_and_print(self):
         for selector_or_policy in (
             "color-scheme: light dark",
@@ -121,6 +132,7 @@ class ReportThemePolicyTests(unittest.TestCase):
         }
         pairs = (
             ("--color-text", "--color-surface", 4.5),
+            ("--color-text", "--color-surface-muted", 4.5),
             ("--color-text-muted", "--color-surface", 4.5),
             ("--color-link", "--color-surface", 4.5),
             ("--color-link-visited", "--color-surface", 4.5),
