@@ -1,0 +1,124 @@
+<!doctype html>
+<!-- Local design derivative, 2026-11-02; fictional content. -->
+<html lang="zh-CN" data-report-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>助手配置已分层，正式环境仍待验收 · 虚构范例</title><style>/* Local revision, 2026-11-02: explicit theme, approved light palette. */
+
+:root{color-scheme:light;--paper:#f4f4ef;--white:#fff;--ink:#193b39;--muted:#60716c;--line:#d8e2dc;--green:#157664;--soft:#e6f4ed;--blue:#456b9f;--bluebg:#edf2fb;--sand:#fff7df;--pink:#f6eeee}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.75 "Segoe UI","Microsoft YaHei",sans-serif}main{max-width:1120px;margin:auto;padding:44px 32px 64px}a{color:var(--green);text-underline-offset:4px}nav{display:flex;justify-content:space-between;gap:20px;align-items:center;border-bottom:1px solid var(--line);padding-bottom:18px;font-size:13px;color:var(--muted)}nav .links{display:flex;gap:20px}nav a{text-decoration:none;color:var(--muted)}.wordmark{font-weight:750;letter-spacing:.05em;color:var(--ink)}header{position:relative;padding:40px 0 27px}.eyebrow{font-size:12px;color:var(--green);letter-spacing:.13em;font-weight:700}.badge{display:inline-flex;gap:7px;align-items:center;border-radius:30px;background:var(--soft);color:var(--green);padding:5px 12px;font-size:12px;font-weight:700}.dot{width:7px;height:7px;border-radius:50%;background:currentColor}h1{font-size:clamp(30px,4.4vw,49px);line-height:1.28;letter-spacing:-.04em;margin:16px 0}h2{font-size:25px;line-height:1.4;margin:0 0 9px;letter-spacing:-.025em}h3{font-size:18px;margin:0 0 7px}.lead{font-size:18px;color:var(--muted);max-width:740px;margin:0}.hero-status{margin:24px 0 0;padding:18px 22px;background:var(--ink);color:white;border-radius:13px;display:flex;justify-content:space-between;align-items:center;gap:22px}.hero-status p{margin:0;color:#d2e3de;font-size:14px}.hero-status strong{display:block;font-size:18px}.button{display:inline-block;padding:9px 18px;border-radius:8px;background:#e4f2c8;color:#213e2d;font-size:14px;font-weight:700;text-decoration:none;white-space:nowrap}.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:13px;margin:20px 0 36px}.fact{border:1px solid var(--line);border-radius:11px;background:#ffffff9c;padding:15px 18px}.fact span{font-size:12px;color:var(--muted)}.fact strong{display:block;font-size:19px;margin:2px 0}.fact p{margin:0;font-size:13px;color:var(--muted)}section{margin:0 0 34px;scroll-margin-top:20px}.section-head{display:flex;gap:17px;align-items:baseline;margin-bottom:17px}.num{font:700 12px/1.5 Consolas,monospace;letter-spacing:.1em;color:var(--green)}.intro{margin:0;color:var(--muted);font-size:14px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:17px}.panel{border:1px solid var(--line);background:var(--white);border-radius:13px;padding:23px}.diagram{background:#fbfcf8;padding:23px}.diagram.before{background:#f8f5f3}.label{font-size:12px;color:var(--muted);font-weight:650}.layer{border:1px solid #cce0d4;border-radius:9px;background:var(--soft);padding:13px 16px;margin-top:13px}.layer b{font:700 11px/1.5 Consolas,monospace;letter-spacing:.1em;color:var(--green)}.layer p{margin:2px 0;font-size:15px}.layer.user{background:var(--bluebg);border-color:#d5e0ef}.layer.user b{color:var(--blue)}.layer.mixed{background:var(--pink);border-color:#e6d7d5}.layer.mixed b{color:#8b6b69}.small{font-size:12px;color:var(--muted)}.channel{text-align:center;font-size:12px;color:var(--muted);margin:14px 0 8px}.channel:before{content:"↓";display:block;font-size:22px;line-height:1.2;color:#89aaa0}.model{border:1px dashed #bdccc3;border-radius:8px;text-align:center;padding:8px;color:#5a6f67;font-size:13px}.diagram.before .model{margin-top:42px}.note{font-size:13px;color:var(--muted);margin:14px 0 0}.note strong{color:var(--green)}.proof{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}.proof div{border:1px solid var(--line);border-radius:9px;padding:13px 16px;background:white;font-size:13px}.proof b{display:block;font-size:14px;color:var(--green)}.memory-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-bottom:10px}.memory-head small{font-size:11px;padding:3px 8px;border:1px solid var(--line);border-radius:20px;color:var(--muted)}.memory p{margin:6px 0;color:var(--muted);font-size:14px}.memory .scope{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:var(--ink)}.recommend{border-left:4px solid var(--green);background:var(--soft);padding:18px 21px;border-radius:0 10px 10px 0;margin-top:16px}.recommend strong{font-size:17px}.recommend p{margin:5px 0 0;color:#44685b;font-size:14px}.checks{display:grid;grid-template-columns:repeat(2,1fr);gap:0 24px;background:white;border:1px solid var(--line);border-radius:12px;padding:8px 22px}.check{padding:13px 0;border-bottom:1px solid #e9efea;font-size:14px;display:flex;justify-content:space-between;gap:12px}.check:nth-last-child(-n+2){border-bottom:0}.ok{color:var(--green);font-size:12px;white-space:nowrap;font-weight:750}details{background:white;border:1px solid var(--line);border-radius:10px;margin-top:14px;padding:13px 18px;font-size:14px}summary{font-weight:650;cursor:pointer;list-style-position:outside;margin-left:14px}details p{color:var(--muted)}details ul{padding-left:22px}code{font:12px/1.7 Consolas,monospace;overflow-wrap:anywhere}pre{padding:15px 18px;background:#f2f5f2;border-radius:8px;overflow:auto;line-height:1.5;font-size:12px}.warning{color:#82621c;background:var(--sand);padding:12px 16px;border-radius:8px}.evidence-links{display:flex;flex-wrap:wrap;gap:12px 22px;margin:15px 0}.evidence-links a{font-size:13px}footer{border-top:1px solid var(--line);padding-top:18px;color:var(--muted);font-size:12px;display:flex;justify-content:space-between;gap:20px}.pill{font-size:11px;color:var(--green);background:var(--soft);padding:3px 8px;border-radius:20px} @media(max-width:700px){main{padding:24px 17px 40px}nav .links{gap:13px}.hero-status{align-items:flex-start;flex-direction:column}.grid,.facts,.proof,.checks{grid-template-columns:1fr}.facts{gap:9px}.fact{padding:12px 16px}.check:nth-last-child(2){border-bottom:1px solid #e9efea}h1{font-size:34px}footer{flex-direction:column}.diagram.before .model{margin-top:14px}.memory-head{flex-wrap:wrap}.section-head{gap:11px}.panel{padding:19px}}
+@media print{body{background:white}main{max-width:none;padding:15px}nav .links,.button{display:none}.panel,.fact,.check{break-inside:avoid}details{break-inside:avoid}section{margin-bottom:25px}a{color:inherit}}
+
+/* Local derivative, 2026-11-02: preserve the approved design, add accessibility. */
+html{scroll-behavior:smooth}.num{flex:0 0 auto;white-space:nowrap}a,summary{touch-action:manipulation}a:focus-visible,summary:focus-visible{outline:3px solid var(--green);outline-offset:5px;border-radius:4px}
+summary{min-height:28px;padding:5px 0}.hero-status{background:#193b39}.hero-status .button{min-height:44px;display:flex;align-items:center}
+.intro,.note,.memory p,.memory .scope,.recommend p,.check,details{font-size:16px}.fact p,.proof div,.hero-status p{font-size:14px}.label,.small,.channel,.model{font-size:14px}.pending{font-size:13px;color:#875d1c;font-weight:700;white-space:nowrap}.check span:first-child{min-width:0;overflow-wrap:anywhere}h1,h2,h3{overflow-wrap:anywhere}pre{color:var(--ink)}pre code{color:inherit}section,.panel{min-width:0}.example-warning{color:#76531b;background:#fff1cf;border-left:4px solid #99701c;padding:12px 16px;font-size:16px}
+@media screen {
+:root[data-report-theme="dark"]{color-scheme:dark;color-scheme:dark;--paper:#142322;--white:#1c302d;--ink:#e4eee8;--muted:#b4c7bf;--line:#425b53;--green:#7ed5b9;--soft:#203f34;--blue:#b4ccf2;--bluebg:#24374e;--sand:#3d321c;--pink:#3d3032}
+:root[data-report-theme="dark"] .fact,:root[data-report-theme="dark"] .proof div,:root[data-report-theme="dark"] .checks,:root[data-report-theme="dark"] details{background:var(--white)}
+:root[data-report-theme="dark"] .diagram{background:#1a3029}
+:root[data-report-theme="dark"] .diagram.before{background:#302c2b}
+:root[data-report-theme="dark"] .layer{border-color:#4a6b5c}
+:root[data-report-theme="dark"] .layer.user{border-color:#506581}
+:root[data-report-theme="dark"] .layer.mixed{border-color:#725459}
+:root[data-report-theme="dark"] .layer.mixed b{color:#e0b7b4}
+:root[data-report-theme="dark"] .model{color:var(--muted);border-color:var(--line)}
+:root[data-report-theme="dark"] .recommend p{color:#c0dace}
+:root[data-report-theme="dark"] .check{border-color:var(--line)}
+:root[data-report-theme="dark"] pre{background:#12221f}
+:root[data-report-theme="dark"] .warning,:root[data-report-theme="dark"] .example-warning{background:#3d321c;color:#f3d798}
+:root[data-report-theme="dark"] .pending{color:#f3d798}
+:root[data-report-theme="dark"] .button{color:#213e2d}
+:root[data-report-theme="dark"] .hero-status strong{color:#fff}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media print{:root{color-scheme:light;--paper:#fff;--white:#fff;--ink:#193b39;--muted:#465951;--line:#a9bdb1;--green:#157664;--soft:#e6f4ed;--blue:#456b9f;--bluebg:#edf2fb;--sand:#fff7df;--pink:#f6eeee}*{print-color-adjust:exact}.hero-status{color:white}.fact,.proof div,.checks,details{background:white}.diagram{background:#fbfcf8}.diagram.before{background:#f8f5f3}.recommend p{color:#44685b}.layer.mixed b{color:#8b6b69}.model{color:#465951}.pending{color:#875d1c}details::details-content{content-visibility:visible!important;display:block!important;height:auto!important;block-size:auto!important}details>*:not(summary){display:block!important}details{break-inside:auto}summary{list-style:none}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f2f5f2;color:#193b39}.warning,.example-warning{color:#76531b;background:#fff1cf}a:after{content:none}}
+</style><!-- report-for-human:controls:start --><style id="rfh-controls-css">/* Local addition, 2026-11-02: shared report reading controls. */
+.rfh-toolbar{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;margin:0 0 18px;font:14px/1.5 "Segoe UI","Microsoft YaHei",sans-serif;color:var(--ink,var(--color-text,#193b39))}
+.rfh-toolbar button{min-height:44px;padding:9px 14px;border:1px solid var(--line,var(--color-border,#d8e2dc));border-radius:9px;background:var(--white,var(--color-surface,#fff));color:inherit;font:inherit;font-weight:600;cursor:pointer;touch-action:manipulation}
+.rfh-toolbar button:hover{background:var(--soft,var(--color-surface-muted,#e6f4ed))}
+.rfh-toolbar button:disabled{cursor:default;opacity:.6}
+.rfh-toolbar button:focus-visible,.rfh-toolbar input:focus-visible{outline:3px solid var(--green,var(--color-focus,#157664));outline-offset:3px}
+.rfh-toolbar [data-rfh-status]{font-size:13px;overflow-wrap:anywhere}
+.rfh-toolbar [data-rfh-status]:empty{display:none}
+.rfh-manual-path{flex:1 0 100%;min-width:0;display:grid;gap:6px}
+.rfh-manual-path input{box-sizing:border-box;width:100%;min-width:0;padding:10px;border:1px solid var(--line,var(--color-border,#d8e2dc));border-radius:7px;background:var(--white,var(--color-surface,#fff));color:inherit;font:14px/1.5 Consolas,monospace}
+.rfh-toolbar [hidden]{display:none!important}
+.rfh-toolbar noscript{flex-basis:100%;font-size:13px}
+@media(max-width:700px){.rfh-toolbar{justify-content:flex-start}.rfh-toolbar [data-rfh-status]{flex-basis:100%}}
+@media print{.rfh-toolbar{display:none!important}}
+</style><script id="rfh-controls-js">/* Local revision, 2026-11-03: copy the recorded source path, never a preview URL. */
+(() => {
+  'use strict';
+  const root = document.documentElement;
+  const key = 'report-for-human:theme';
+  let initial = 'light';
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved === 'light' || saved === 'dark') initial = saved;
+  } catch { /* Reading remains available when storage is blocked. */ }
+  root.dataset.reportTheme = initial;
+
+  function locationToCopy() {
+    const path = document.querySelector('meta[name="report-source-path"]')?.content?.trim();
+    if (!path || !(/^[a-z]:[\\/]/i.test(path) || /^\\\\[^\\]+\\[^\\]+/.test(path) || path.startsWith('/'))) return null;
+    return path;
+  }
+
+  function ready() {
+    const toggle = document.querySelector('[data-rfh-theme-toggle]');
+    const copy = document.querySelector('[data-rfh-copy-path]');
+    const status = document.querySelector('[data-rfh-status]');
+    const manual = document.querySelector('[data-rfh-manual]');
+    const pathField = document.querySelector('[data-rfh-manual-path]');
+    if (!toggle || !copy || !status || !manual || !pathField) return;
+    function showTheme() {
+      const dark = root.dataset.reportTheme === 'dark';
+      toggle.textContent = dark ? '切换浅色' : '切换深色';
+      toggle.setAttribute('aria-pressed', String(dark));
+      toggle.title = dark ? '当前为深色，切换为浅色' : '当前为浅色，切换为深色';
+    }
+    toggle.disabled = false;
+    copy.disabled = false;
+    showTheme();
+    toggle.addEventListener('click', () => {
+      root.dataset.reportTheme = root.dataset.reportTheme === 'dark' ? 'light' : 'dark';
+      try { localStorage.setItem(key, root.dataset.reportTheme); } catch { /* The current page still switches. */ }
+      showTheme();
+    });
+    copy.addEventListener('click', async () => {
+      const path = locationToCopy();
+      status.textContent = '';
+      manual.hidden = true;
+      if (!path) {
+        status.textContent = '报告尚未记录本机文件位置，请用生成器重新生成。';
+        return;
+      }
+      copy.disabled = true;
+      try {
+        if (!navigator.clipboard?.writeText) throw new Error('Clipboard unavailable');
+        await navigator.clipboard.writeText(path);
+        status.textContent = '已复制文件位置';
+      } catch {
+        manual.hidden = false;
+        pathField.value = path;
+        pathField.focus();
+        pathField.select();
+        status.textContent = '浏览器未允许自动复制，已选中位置，可手动复制。';
+      } finally { copy.disabled = false; }
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready, {once:true});
+  else ready();
+})();
+</script><!-- report-for-human:controls:end --></head><body><main class="human-report"><!-- report-for-human:tools:start --><div class="rfh-toolbar" data-rfh-toolbar role="group" aria-label="报告阅读工具">
+<button type="button" data-rfh-theme-toggle aria-pressed="false" disabled>切换深色</button>
+<button type="button" data-rfh-copy-path disabled>复制文件位置</button>
+<span data-rfh-status role="status" aria-live="polite"></span>
+<label class="rfh-manual-path" data-rfh-manual hidden>文件或页面位置<input data-rfh-manual-path readonly aria-label="文件或页面位置"></label>
+<noscript>阅读工具需要 JavaScript；报告正文仍可阅读和打印。</noscript>
+</div><!-- report-for-human:tools:end -->
+<nav><span class="wordmark">项目工作台 / 虚构示例</span><div class="links"><a href="#change">改动</a><a href="#boundary">职责</a><a href="#verification">验收</a></div></nav>
+<header><div class="eyebrow">部署汇报 · 设计范例</div><h1>助手配置已分层，<br>正式环境仍待验收。</h1><p class="lead">示例中，身份与任务分开传给模型。使用者仍照常发任务；这里不代表任何真实项目已部署。</p><p class="example-warning">本页全部业务事实、状态和数据均为虚构，用于演示版式，不能作为实测证据。</p>
+<div class="hero-status"><div><strong>示例状态：本地检查完成，线上尚未验收</strong><p>下一步是在实际入口检查请求和回复。</p></div><a class="button" href="#verification">看验收范围 ↓</a></div></header>
+<div class="facts"><div class="fact"><span>改动位置</span><strong>身份与任务分层</strong><p>图中展示请求的两种角色</p></div><div class="fact"><span>已有数据</span><strong>迁移不在本次范围</strong><p>数据是否保留另需实际核对</p></div><div class="fact"><span>记忆插件</span><strong>暂缓自动记录</strong><p>共享范围尚未完成核对</p></div></div>
+<section id="change"><div class="section-head"><span class="num">01 /</span><div><h2>这次到底改了什么？</h2><p class="intro">用输入的真实层级解释变化，不要求读者认识内部类名。</p></div></div><div class="grid"><div class="panel diagram before"><span class="label">之前 · 示例</span><div class="layer mixed"><b>USER</b><p>助手身份 ＋ 本轮任务</p><span class="small">配置随普通消息传入</span></div><div class="channel">传输通道</div><div class="model">模型</div></div><div class="panel diagram"><span class="label">现在 · 示例</span><div class="layer"><b>SYSTEM</b><p>助手身份与协作定位</p></div><div class="layer user"><b>USER</b><p>本轮任务与上下文</p></div><div class="channel">传输通道</div><div class="model">模型</div></div></div><p class="note"><strong>怎么确认？</strong>正式验收须查看最终请求分层；助手自称身份，不能代替请求证据。</p></section>
+<section id="boundary"><div class="section-head"><span class="num">02 /</span><div><h2>两套记忆各自管什么？</h2><p class="intro">能同时运行，不等于资料可以自动共享。</p></div></div><div class="grid"><div class="panel memory"><div class="memory-head"><h3>对话档案：原始凭据</h3><small>示例职责</small></div><p>保存对话原文，查找来源，按用户和资料范围读取。</p><div class="scope">适合：核对当时说过什么、资料来自哪里。</div></div><div class="panel memory"><div class="memory-head"><h3>项目经验本：提炼经验</h3><small>示例职责</small></div><p>把经过选择的经历整理成长期经验，帮助后续工作回顾。</p><div class="scope">边界：经验摘要需要回到原始凭据核对。</div></div></div><div class="recommend"><strong>示例建议：先保持独立，暂缓自动记录。</strong><p>尚未确认经验本能按用户隔离；只凭两套存储不冲突，不能认定自动共享合适。</p></div></section>
+<section id="verification"><div class="section-head"><span class="num">03 /</span><div><h2>哪些检查支持当前结论？</h2><p class="intro">检查名称与来源并列，保留没有覆盖的地方。</p></div></div><div class="checks"><div class="check"><span>本地分层用例 · 虚构数据</span><span class="ok">示例通过</span></div><div class="check"><span>正式环境完整入口</span><span class="pending">尚未验收</span></div><div class="check"><span>跨用户记忆隔离</span><span class="pending">尚未验证</span></div><div class="check"><span>旧数据保留</span><span class="pending">尚未核对</span></div></div><details><summary>展开来源与验证边界</summary><p>示例版本 example-v1，示例时间 2026-01-08 10:20（UTC+8）。本页状态均为虚构；实际汇报应替换为版本、环境、时间明确的证据。</p><pre><code>{ "system": "助手身份（示意）", "messages": [{ "role": "user", "content": "任务（示意）" }] }</code></pre><p>不要从模板继承部署成功、测试数量或权限结论。报告可读，不代表产品已通过验收。</p></details></section>
+<footer><span>去项目化设计范例 · 全部业务事实为虚构</span><span>实际报告须替换日期、状态与来源</span></footer>
+</main></body></html>

@@ -54,7 +54,7 @@ class ReportThemePolicyTests(unittest.TestCase):
         light = _theme_tokens(self.css, r":root\s*\{([^}]*)\}")
         dark = _theme_tokens(
             self.css,
-            r"@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}",
+            r':root\[data-report-theme="dark"\]\s*\{([^}]*)\}',
         )
         print_theme = _theme_tokens(
             self.css,
@@ -95,7 +95,7 @@ class ReportThemePolicyTests(unittest.TestCase):
 
     def test_theme_covers_report_components_responsiveness_focus_and_print(self):
         for selector_or_policy in (
-            "color-scheme: light dark",
+            "color-scheme: light",
             ".report-header",
             ".report-nav",
             "a:focus-visible",
@@ -123,7 +123,7 @@ class ReportThemePolicyTests(unittest.TestCase):
             "light": _theme_tokens(self.css, r":root\s*\{([^}]*)\}"),
             "dark": _theme_tokens(
                 self.css,
-                r"@media\s*\(prefers-color-scheme:\s*dark\)\s*\{\s*:root\s*\{([^}]*)\}",
+                r':root\[data-report-theme="dark"\]\s*\{([^}]*)\}',
             ),
             "print": _theme_tokens(
                 self.css,

@@ -3,13 +3,16 @@ from html.parser import HTMLParser
 import importlib.util
 import json
 from pathlib import Path
+import sys
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / 'skills/report-for-human'
 spec = importlib.util.spec_from_file_location('report_renderer', SKILL / 'scripts/render_report.py')
 renderer = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(renderer)
+with patch.object(sys, 'path', [str(SKILL / 'scripts'), *sys.path]):
+    spec.loader.exec_module(renderer)
 
 
 class Elements(HTMLParser):
@@ -41,7 +44,7 @@ class ReportRendererTests(unittest.TestCase):
         d['title'] = attack; d['scenarios'][0]['summary'] = attack
         html = renderer.render(d); parsed = Elements(html)
         self.assertFalse(any(tag == 'img' for tag, _ in parsed.tags))
-        self.assertEqual(sum(tag == 'script' for tag, _ in parsed.tags), 2)
+        self.assertEqual(sum(tag == 'script' for tag, _ in parsed.tags), 3)
         self.assertIn('&lt;/script&gt;', html)
         self.assertIn('\\u003c/script\\u003e', html)
 
