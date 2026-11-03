@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import textwrap
 from urllib.parse import urlsplit
+from add_report_controls import enhance_report
 
 ROOT = Path(__file__).resolve().parents[1]
 KINDS = {"change": "改动", "requirements": "要求", "status": "现状", "mechanism": "机制"}
@@ -105,7 +106,7 @@ def visual(d):
     return graph(d["graph"])
 
 
-def render(d):
+def render(d, source_path=None):
     if d.get("kind") not in KINDS:
         raise ValueError("kind must be change/requirements/status/mechanism")
     for key in ["title", "summary", "scope", "as_of"]:
@@ -170,16 +171,17 @@ const details=[...document.querySelectorAll('details')];let wasOpen=[];
 addEventListener('beforeprint',()=>{wasOpen=details.map(d=>d.open);details.forEach(d=>d.open=true)});
 addEventListener('afterprint',()=>details.forEach((d,i)=>d.open=wasOpen[i]??false));
 })();'''+'</script></body></html>'
-    return page
+    return enhance_report(page, source_path=source_path)
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--input', required=True, type=Path)
     p.add_argument('--output', required=True, type=Path)
+    p.add_argument('--source-path', help='Actual local report path when output is transported through a preview system')
     a = p.parse_args()
     try:
-        html = render(json.loads(a.input.read_text(encoding='utf-8')))
+        html = render(json.loads(a.input.read_text(encoding='utf-8')), source_path=a.source_path or a.output.resolve())
     except (ValueError, KeyError, TypeError) as e:
         p.error(str(e))
     a.output.parent.mkdir(parents=True, exist_ok=True)

@@ -46,12 +46,17 @@ skills/
 
 由 `explain-diff-for-human-review` 重构。用户不理解改动、要求、现状或责任边界时直接触发；新 PR 创建后主动生成 HTML，并随审查事实变化更新。
 
+保留蓝色生成器，新增来自用户认可报告的米白与墨绿运维范例；模板内容均为虚构，不代表真实部署或验收结果。优先沿用读者已认可的阅读顺序与关系图。
+
+两套范例共用明暗切换和文件位置复制：首次默认浅色，手动选择后记忆；最终生成时绑定真实绝对路径，从托管预览打开也复制来源文件位置。复制失败时显示可选中路径。复制或移动运维模板后，运行 `skills/report-for-human/scripts/add_report_controls.py --input <report.html>` 重新绑定交付路径；跨环境路径用 `--source-path` 显式指定。
+
 - 四类主问题：改动前后对照、要求与验收关系、阶段与卡点、机制与责任图。纯讲解不虚构 PR 或合入判断。
 - 共用主题、布局、生成器、四份去项目化 JSON 示例和完整 HTML/预览，让其他 Agent 复现同一视觉语言；先取证，再填写呈现数据。
 - 默认首屏结论加一个主视觉，详细证据折叠；明暗主题、窄屏、键盘和打印均需检查。
 - 保留固定版本证据、可选独立只读审查和合入授权边界；报告不执行外部操作。
 - 定义：[skills/report-for-human/SKILL.md](skills/report-for-human/SKILL.md)
 - 视觉锚点：[完整样例](skills/report-for-human/assets/reference-report.html) · [预览](skills/report-for-human/assets/reference-preview.png)
+- 运维锚点：[完整样例](skills/report-for-human/assets/operations-report.html) · [预览](skills/report-for-human/assets/operations-preview.png)
 - 原始来源：[GitHubxsy/agent-skills](https://github.com/GitHubxsy/agent-skills/tree/main/skills/explain-diff-for-human-review)，原 blob `110c9dd9e30d278edbfc30fc6bac05cdf4e4afd3`；Apache-2.0，见 `sources.lock.json`。
 - 本地修订：#2/#3 输出与大差异、#7 固定证据、#10 独立审查、#15 主题、#23 精简判断、#51 图解、[#53](../../issues/53) 汇报入口与视觉基线重构。
 

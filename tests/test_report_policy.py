@@ -9,7 +9,7 @@ SKILL = ROOT / 'skills' / 'report-for-human'
 class HumanReportPolicyTests(unittest.TestCase):
     def test_discovery_covers_explanation_and_new_pr(self):
         main = (SKILL / 'SKILL.md').read_text()
-        for value in ('name: report-for-human', '没看懂改动', '不清楚要求或规范', '当前现状',
+        for value in ('name: report-for-human', '没看懂改动', '不清楚要求或规范', '现在到了哪步',
                       '提交新的 PR 后也主动生成', '`change`', '`requirements`', '`status`', '`mechanism`'):
             self.assertIn(value, main)
         self.assertIn('纯讲解不强造 PR 或合入结论', main)

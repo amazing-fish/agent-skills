@@ -1,4 +1,5 @@
+# Local modification, 2026-11-02: honor the user's approved report reference.
 interface:
   display_name: "Report for Human · 清晰汇报"
   short_description: "用前后对照、要求关系、阶段与责任图讲清改动和现状，自动交付新 PR 的 HTML 汇报"
-  default_prompt: "使用 $report-for-human 核对事实，用清晰、简洁的可视化 HTML 讲明我的问题，并沿用随附版式与设计示例。"
+  default_prompt: "使用 $report-for-human 核对事实，用清晰、简洁的可视化 HTML 讲明我的问题，优先复用我认可的报告或随附的适用范例。"

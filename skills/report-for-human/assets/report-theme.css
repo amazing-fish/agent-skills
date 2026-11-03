@@ -1,5 +1,6 @@
+/* Local revision, 2026-11-02: explicit theme, approved light palette. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --color-canvas: #f3f5f8;
   --color-accent: #315ee9;
   --color-purple-bg: #f3edfc;
@@ -24,8 +25,8 @@
   --color-shadow: #1b2a3a1f;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+@media screen {
+:root[data-report-theme="dark"]{color-scheme:dark;
     --color-canvas: #0d1117;
     --color-accent: #9bb6ff;
     --color-purple-bg: #2b213f;

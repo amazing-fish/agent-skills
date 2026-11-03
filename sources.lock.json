@@ -51,10 +51,32 @@
           "tests/test_report_policy.py",
           "tests/test_report_renderer.py",
           "tests/test_report_theme_policy.py",
-          "tests/test_skill_policy.py"
+          "tests/test_skill_policy.py",
+          "skills/report-for-human/assets/operations-preview.png",
+          "skills/report-for-human/assets/operations-report.html",
+          "skills/report-for-human/assets/operations-theme.css",
+          "skills/report-for-human/assets/report-controls.css",
+          "skills/report-for-human/assets/report-controls.js",
+          "skills/report-for-human/references/operations-reports.md",
+          "skills/report-for-human/scripts/add_report_controls.py",
+          "tests/test_report_controls.py"
         ],
-        "modified_at": "2026-10-22",
-        "previous_local_name": "explain-diff-for-human-review"
+        "modified_at": "2026-11-03",
+        "previous_local_name": "explain-diff-for-human-review",
+        "local_revision": {
+          "base_repository": "amazing-fish/agent-skills",
+          "base_commit": "91bb6d73ec73dcbd3e4c18f49b107f7eeaaa2f59",
+          "scope": "User-requested upload of the local operations example, reading controls and source-path binding",
+          "design_source": {
+            "label": "User-approved deployment and memory compatibility report",
+            "sha256": "c9457dbeaf6b9359f6e24f7be6c3bb61ee8586c487871b69f3664c4c60280565",
+            "original_used_this_skill": false,
+            "transfer": "Reading order, warm palette, layered comparison, responsibility boundaries and separate acceptance evidence",
+            "not_transferred": "Private prompts, machine paths, product facts, identities, timestamps or access links"
+          },
+          "reading_controls": "Approved light default; explicit persisted theme choice; copy only on click with an honest manual fallback",
+          "source_path": "Bind the final absolute filesystem path; hosted preview URLs never replace it"
+        }
       }
     }
   }
