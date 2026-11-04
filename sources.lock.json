@@ -22,7 +22,8 @@
           23,
           51,
           53,
-          55
+          55,
+          59
         ],
         "notice_location": "skills/report-for-human/SKILL.md",
         "added_files": [
@@ -61,7 +62,7 @@
           "skills/report-for-human/scripts/add_report_controls.py",
           "tests/test_report_controls.py"
         ],
-        "modified_at": "2026-11-03",
+        "modified_at": "2026-11-05",
         "previous_local_name": "explain-diff-for-human-review",
         "local_revision": {
           "base_repository": "amazing-fish/agent-skills",
@@ -76,6 +77,14 @@
           },
           "reading_controls": "Approved light default; explicit persisted theme choice; copy only on click with an honest manual fallback",
           "source_path": "Bind the final absolute filesystem path; hosted preview URLs never replace it"
+        },
+        "screenshot_evidence_revision": {
+          "date": "2026-11-04",
+          "recorded_at": "2026-11-05",
+          "issue": 59,
+          "scope": "Business-decision screenshot evidence and persisted per-item capture gaps; documentation only",
+          "contract": "Provide actual supporting screenshots with source and limits; preserve textual evidence when screenshots are missing",
+          "follow_up": "Read saved item records before related exploration or retest, remind to capture missing screenshots, and close gaps only after collection and verification"
         }
       }
     }
