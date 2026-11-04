@@ -54,6 +54,7 @@ skills/
 - 共用主题、布局、生成器、四份去项目化 JSON 示例和完整 HTML/预览，让其他 Agent 复现同一视觉语言；先取证，再填写呈现数据。
 - 默认首屏结论加一个主视觉，详细证据折叠；明暗主题、窄屏、键盘和打印均需检查。
 - 保留固定版本证据、可选独立只读审查和合入授权边界；报告不执行外部操作。
+- 业务决策提供对应实际截图；缺图时保留文字证据、判断限制和待补事项，后续探索/复测前查阅原记录并提醒补采，核对截图前不关闭。详见[截图与补采](skills/report-for-human/references/evidence.md#截图与补采)。
 - 定义：[skills/report-for-human/SKILL.md](skills/report-for-human/SKILL.md)
 - 视觉锚点：[完整样例](skills/report-for-human/assets/reference-report.html) · [预览](skills/report-for-human/assets/reference-preview.png)
 - 运维锚点：[完整样例](skills/report-for-human/assets/operations-report.html) · [预览](skills/report-for-human/assets/operations-preview.png)
