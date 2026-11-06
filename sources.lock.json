@@ -23,7 +23,8 @@
           51,
           53,
           55,
-          59
+          59,
+          61
         ],
         "notice_location": "skills/report-for-human/SKILL.md",
         "added_files": [
@@ -60,9 +61,10 @@
           "skills/report-for-human/assets/report-controls.js",
           "skills/report-for-human/references/operations-reports.md",
           "skills/report-for-human/scripts/add_report_controls.py",
-          "tests/test_report_controls.py"
+          "tests/test_report_controls.py",
+          "tests/report_theme_behavior.cjs"
         ],
-        "modified_at": "2026-11-05",
+        "modified_at": "2026-11-07",
         "previous_local_name": "explain-diff-for-human-review",
         "local_revision": {
           "base_repository": "amazing-fish/agent-skills",
@@ -85,6 +87,12 @@
           "scope": "Business-decision screenshot evidence and persisted per-item capture gaps; documentation only",
           "contract": "Provide actual supporting screenshots with source and limits; preserve textual evidence when screenshots are missing",
           "follow_up": "Read saved item records before related exploration or retest, remind to capture missing screenshots, and close gaps only after collection and verification"
+        },
+        "theme_choice_revision": {
+          "issue": 61,
+          "base_commit": "05cad918db60b5b160f139a159014d8fb3594c82",
+          "scope": "Add explicit system/light/dark preference; preserve approved light default and existing light/dark persistence",
+          "verification": "Mocked DOM tests are logic evidence, not device-specific visual acceptance"
         }
       }
     }

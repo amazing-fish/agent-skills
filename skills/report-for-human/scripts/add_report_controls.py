@@ -64,7 +64,7 @@ def enhance_report(html: str, source_path: str | Path | None = None) -> str:
     head = HEAD_START + source_meta + '<style id="rfh-controls-css">' + css + '</style><script id="rfh-controls-js">' + js + '</script>' + HEAD_END
     html = re.sub(r'</head\s*>', lambda m: head + m[0], html, count=1, flags=re.I)
     toolbar = TOOLS_START + '''<div class="rfh-toolbar" data-rfh-toolbar role="group" aria-label="报告阅读工具">
-<button type="button" data-rfh-theme-toggle aria-pressed="false" disabled>切换深色</button>
+<label class="rfh-theme-choice">主题<select data-rfh-theme-toggle aria-label="报告主题" disabled><option value="system">跟随系统</option><option value="light" selected>浅色</option><option value="dark">深色</option></select></label>
 <button type="button" data-rfh-copy-path disabled>复制文件位置</button>
 <span data-rfh-status role="status" aria-live="polite"></span>
 <label class="rfh-manual-path" data-rfh-manual hidden>文件或页面位置<input data-rfh-manual-path readonly aria-label="文件或页面位置"></label>
