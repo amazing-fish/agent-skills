@@ -3,12 +3,21 @@
   'use strict';
   const root = document.documentElement;
   const key = 'report-for-human:theme';
-  let initial = 'light';
+  const systemTheme = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  let preference = 'light';
   try {
     const saved = localStorage.getItem(key);
-    if (saved === 'light' || saved === 'dark') initial = saved;
+    if (['system', 'light', 'dark'].includes(saved)) preference = saved;
   } catch { /* Reading remains available when storage is blocked. */ }
-  root.dataset.reportTheme = initial;
+  function applyTheme() {
+    root.dataset.reportTheme = preference === 'system'
+      ? (systemTheme?.matches ? 'dark' : 'light') : preference;
+  }
+  applyTheme();
+  systemTheme?.addEventListener('change', () => {
+    if (preference === 'system') applyTheme();
+  });
 
   function locationToCopy() {
     const path = document.querySelector('meta[name="report-source-path"]')?.content?.trim();
@@ -24,17 +33,16 @@
     const pathField = document.querySelector('[data-rfh-manual-path]');
     if (!toggle || !copy || !status || !manual || !pathField) return;
     function showTheme() {
-      const dark = root.dataset.reportTheme === 'dark';
-      toggle.textContent = dark ? '切换浅色' : '切换深色';
-      toggle.setAttribute('aria-pressed', String(dark));
-      toggle.title = dark ? '当前为深色，切换为浅色' : '当前为浅色，切换为深色';
+      toggle.value = preference;
     }
     toggle.disabled = false;
     copy.disabled = false;
     showTheme();
-    toggle.addEventListener('click', () => {
-      root.dataset.reportTheme = root.dataset.reportTheme === 'dark' ? 'light' : 'dark';
-      try { localStorage.setItem(key, root.dataset.reportTheme); } catch { /* The current page still switches. */ }
+    toggle.addEventListener('change', () => {
+      if (!['system', 'light', 'dark'].includes(toggle.value)) return;
+      preference = toggle.value;
+      applyTheme();
+      try { localStorage.setItem(key, preference); } catch { /* The current page still switches. */ }
       showTheme();
     });
     copy.addEventListener('click', async () => {

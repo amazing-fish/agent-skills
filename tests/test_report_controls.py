@@ -2,6 +2,7 @@
 from html.parser import HTMLParser
 import importlib.util
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -43,6 +44,24 @@ class ReportControlsTests(unittest.TestCase):
         self.assertFalse(any(tag in {'link', 'iframe', 'img'} or
                              (tag == 'script' and 'src' in a) for tag, a in tags))
         self.assertEqual(source_paths(page), [])
+
+    def test_theme_selector_has_three_accessible_options(self):
+        page = controls.enhance_report(PAGE)
+        tags = Tags(page).items
+        selects = [attrs for tag, attrs in tags if tag == 'select' and 'data-rfh-theme-toggle' in attrs]
+        self.assertEqual(len(selects), 1)
+        self.assertEqual(selects[0]['aria-label'], '报告主题')
+        self.assertEqual([attrs['value'] for tag, attrs in tags if tag == 'option'],
+                         ['system', 'light', 'dark'])
+        for name in ('reference-report.html', 'operations-report.html'):
+            template = (SKILL / 'assets' / name).read_text(encoding='utf-8')
+            self.assertIn('<option value="system">跟随系统</option>', template)
+            self.assertIn((SKILL / 'assets/report-controls.js').read_text(encoding='utf-8'), template)
+
+    @unittest.skipUnless(shutil.which('node'), 'Node.js is required for mocked DOM behavior checks')
+    def test_theme_behavior_in_mocked_dom(self):
+        subprocess.run(['node', str(ROOT / 'tests/report_theme_behavior.cjs')],
+                       check=True, capture_output=True, text=True)
 
     def test_repeat_enhancement_preserves_one_toolbar_and_the_source_path(self):
         path = r'C:\Reports\中文 空格 #1.html'

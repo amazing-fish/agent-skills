@@ -30,10 +30,11 @@ summary{min-height:28px;padding:5px 0}.hero-status{background:#193b39}.hero-stat
 @media print{:root{color-scheme:light;--paper:#fff;--white:#fff;--ink:#193b39;--muted:#465951;--line:#a9bdb1;--green:#157664;--soft:#e6f4ed;--blue:#456b9f;--bluebg:#edf2fb;--sand:#fff7df;--pink:#f6eeee}*{print-color-adjust:exact}.hero-status{color:white}.fact,.proof div,.checks,details{background:white}.diagram{background:#fbfcf8}.diagram.before{background:#f8f5f3}.recommend p{color:#44685b}.layer.mixed b{color:#8b6b69}.model{color:#465951}.pending{color:#875d1c}details::details-content{content-visibility:visible!important;display:block!important;height:auto!important;block-size:auto!important}details>*:not(summary){display:block!important}details{break-inside:auto}summary{list-style:none}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f2f5f2;color:#193b39}.warning,.example-warning{color:#76531b;background:#fff1cf}a:after{content:none}}
 </style><!-- report-for-human:controls:start --><style id="rfh-controls-css">/* Local addition, 2026-11-02: shared report reading controls. */
 .rfh-toolbar{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:8px;margin:0 0 18px;font:14px/1.5 "Segoe UI","Microsoft YaHei",sans-serif;color:var(--ink,var(--color-text,#193b39))}
-.rfh-toolbar button{min-height:44px;padding:9px 14px;border:1px solid var(--line,var(--color-border,#d8e2dc));border-radius:9px;background:var(--white,var(--color-surface,#fff));color:inherit;font:inherit;font-weight:600;cursor:pointer;touch-action:manipulation}
-.rfh-toolbar button:hover{background:var(--soft,var(--color-surface-muted,#e6f4ed))}
-.rfh-toolbar button:disabled{cursor:default;opacity:.6}
-.rfh-toolbar button:focus-visible,.rfh-toolbar input:focus-visible{outline:3px solid var(--green,var(--color-focus,#157664));outline-offset:3px}
+.rfh-theme-choice{display:flex;align-items:center;gap:8px}
+.rfh-toolbar button,.rfh-toolbar select{min-height:44px;padding:9px 14px;border:1px solid var(--line,var(--color-border,#d8e2dc));border-radius:9px;background:var(--white,var(--color-surface,#fff));color:inherit;font:inherit;font-weight:600;cursor:pointer;touch-action:manipulation}
+.rfh-toolbar button:hover,.rfh-toolbar select:hover{background:var(--soft,var(--color-surface-muted,#e6f4ed))}
+.rfh-toolbar button:disabled,.rfh-toolbar select:disabled{cursor:default;opacity:.6}
+.rfh-toolbar select:focus-visible,.rfh-toolbar button:focus-visible,.rfh-toolbar input:focus-visible{outline:3px solid var(--green,var(--color-focus,#157664));outline-offset:3px}
 .rfh-toolbar [data-rfh-status]{font-size:13px;overflow-wrap:anywhere}
 .rfh-toolbar [data-rfh-status]:empty{display:none}
 .rfh-manual-path{flex:1 0 100%;min-width:0;display:grid;gap:6px}
@@ -47,12 +48,21 @@ summary{min-height:28px;padding:5px 0}.hero-status{background:#193b39}.hero-stat
   'use strict';
   const root = document.documentElement;
   const key = 'report-for-human:theme';
-  let initial = 'light';
+  const systemTheme = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  let preference = 'light';
   try {
     const saved = localStorage.getItem(key);
-    if (saved === 'light' || saved === 'dark') initial = saved;
+    if (['system', 'light', 'dark'].includes(saved)) preference = saved;
   } catch { /* Reading remains available when storage is blocked. */ }
-  root.dataset.reportTheme = initial;
+  function applyTheme() {
+    root.dataset.reportTheme = preference === 'system'
+      ? (systemTheme?.matches ? 'dark' : 'light') : preference;
+  }
+  applyTheme();
+  systemTheme?.addEventListener('change', () => {
+    if (preference === 'system') applyTheme();
+  });
 
   function locationToCopy() {
     const path = document.querySelector('meta[name="report-source-path"]')?.content?.trim();
@@ -68,17 +78,16 @@ summary{min-height:28px;padding:5px 0}.hero-status{background:#193b39}.hero-stat
     const pathField = document.querySelector('[data-rfh-manual-path]');
     if (!toggle || !copy || !status || !manual || !pathField) return;
     function showTheme() {
-      const dark = root.dataset.reportTheme === 'dark';
-      toggle.textContent = dark ? '切换浅色' : '切换深色';
-      toggle.setAttribute('aria-pressed', String(dark));
-      toggle.title = dark ? '当前为深色，切换为浅色' : '当前为浅色，切换为深色';
+      toggle.value = preference;
     }
     toggle.disabled = false;
     copy.disabled = false;
     showTheme();
-    toggle.addEventListener('click', () => {
-      root.dataset.reportTheme = root.dataset.reportTheme === 'dark' ? 'light' : 'dark';
-      try { localStorage.setItem(key, root.dataset.reportTheme); } catch { /* The current page still switches. */ }
+    toggle.addEventListener('change', () => {
+      if (!['system', 'light', 'dark'].includes(toggle.value)) return;
+      preference = toggle.value;
+      applyTheme();
+      try { localStorage.setItem(key, preference); } catch { /* The current page still switches. */ }
       showTheme();
     });
     copy.addEventListener('click', async () => {
@@ -107,7 +116,7 @@ summary{min-height:28px;padding:5px 0}.hero-status{background:#193b39}.hero-stat
   else ready();
 })();
 </script><!-- report-for-human:controls:end --></head><body><main class="human-report"><!-- report-for-human:tools:start --><div class="rfh-toolbar" data-rfh-toolbar role="group" aria-label="报告阅读工具">
-<button type="button" data-rfh-theme-toggle aria-pressed="false" disabled>切换深色</button>
+<label class="rfh-theme-choice">主题<select data-rfh-theme-toggle aria-label="报告主题" disabled><option value="system">跟随系统</option><option value="light" selected>浅色</option><option value="dark">深色</option></select></label>
 <button type="button" data-rfh-copy-path disabled>复制文件位置</button>
 <span data-rfh-status role="status" aria-live="polite"></span>
 <label class="rfh-manual-path" data-rfh-manual hidden>文件或页面位置<input data-rfh-manual-path readonly aria-label="文件或页面位置"></label>
