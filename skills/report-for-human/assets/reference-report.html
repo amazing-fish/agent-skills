@@ -211,12 +211,9 @@ th {
   background: var(--color-surface-muted);
 }
 
-th:first-child,
-td:first-child,
-th:nth-child(2),
-td:nth-child(2) {
-  width: 1%;
-  white-space: nowrap;
+th,
+td {
+  overflow-wrap: anywhere;
 }
 
 td code {
@@ -466,6 +463,31 @@ summary {
 .rfh-toolbar noscript{flex-basis:100%;font-size:13px}
 @media(max-width:700px){.rfh-toolbar{justify-content:flex-start}.rfh-toolbar [data-rfh-status]{flex-basis:100%}}
 @media print{.rfh-toolbar{display:none!important}}
+
+/* Opt-in long-form tables. Column hints stay in semantic HTML colgroups. */
+.rfh-table-wrap{box-sizing:border-box;min-width:0;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+.rfh-table-wrap:focus-visible{outline:3px solid var(--green,var(--color-focus,#157664));outline-offset:3px}
+.rfh-table-wrap>.rfh-table{box-sizing:border-box;width:100%;min-width:var(--rfh-table-min-width,0px);max-width:none;table-layout:fixed;border-collapse:collapse}
+.rfh-table-wrap>.rfh-table th,.rfh-table-wrap>.rfh-table td{box-sizing:border-box;width:auto;min-width:0;max-width:none;white-space:normal;overflow-wrap:anywhere;word-break:normal}
+.rfh-table caption{text-align:left;font-weight:600;padding:8px 0;color:inherit}
+.rfh-table-tools{border:0;border-radius:0;padding:0;margin:10px 0;color:var(--ink,var(--color-text,#193b39));background:transparent;font:14px/1.5 "Segoe UI","Microsoft YaHei",sans-serif}
+.rfh-table-tools>summary{width:fit-content;min-height:44px;box-sizing:border-box;padding:10px 8px;cursor:pointer;font-weight:600}
+.rfh-table-tools summary:focus-visible,.rfh-table-tools input:focus-visible,.rfh-table-tools button:focus-visible{outline:3px solid var(--green,var(--color-focus,#157664));outline-offset:3px}
+.rfh-table-tools p{margin:6px 0 12px}
+.rfh-table-sliders{display:flex;flex-wrap:wrap;gap:12px 24px;padding:4px 8px 12px}
+.rfh-table-sliders label{flex:1 1 190px;max-width:320px;display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;overflow-wrap:anywhere}
+.rfh-table-sliders input{grid-column:1/-1;box-sizing:border-box;width:100%;min-height:44px;margin:0;accent-color:var(--green,var(--color-accent,#157664))}
+.rfh-table-sliders output{font-variant-numeric:tabular-nums;white-space:nowrap}
+.rfh-table-tools button{min-height:44px;border:1px solid var(--line,var(--color-border,#d8e2dc));border-radius:8px;padding:8px 12px;background:var(--white,var(--color-surface,#fff));color:inherit;font:inherit;cursor:pointer}
+.rfh-table-tools button:disabled{opacity:.6;cursor:default}
+@media(max-width:600px){.rfh-table-sliders label{max-width:none;flex-basis:100%}}
+@media print{
+  .rfh-table-tools{display:none!important}
+  .rfh-table-wrap{overflow:visible!important;max-width:none;border:0}
+  .rfh-table-wrap>.rfh-table{width:100%!important;min-width:0!important;max-width:100%!important;table-layout:auto!important}
+  .rfh-table-wrap>.rfh-table col{width:auto!important}
+  .rfh-table-wrap>.rfh-table th,.rfh-table-wrap>.rfh-table td{min-width:0!important;max-width:none!important;white-space:normal!important;overflow-wrap:anywhere}
+}
 </style><script id="rfh-controls-js">/* Local revision, 2026-11-03: copy the recorded source path, never a preview URL. */
 (() => {
   'use strict';
@@ -537,6 +559,88 @@ summary {
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready, {once:true});
   else ready();
+})();
+
+/* Optional local column sizing. Native range inputs supply pointer + keyboard UI. */
+(function () {
+  'use strict';
+  var MIN = 120, MAX = 960;
+  function init() {
+    document.querySelectorAll('.rfh-table[data-rfh-resizable]').forEach(function (table) {
+      if (table.hasAttribute('data-rfh-table-ready')) return;
+      var wrap = table.parentElement;
+      var head = table.tHead;
+      if (!wrap || !wrap.classList.contains('rfh-table-wrap') || !head || head.rows.length !== 1) return;
+      var headers = Array.from(head.rows[0].cells);
+      // Spanned, nested, and very wide tables need author-designed reading behavior.
+      if (headers.length < 2 || headers.length > 8 || headers.some(function (cell) { return cell.tagName !== 'TH'; }) ||
+          table.querySelector('table') || Array.from(table.rows).some(function (row) {
+            return row.cells.length !== headers.length || Array.from(row.cells).some(function (cell) {
+              return cell.colSpan !== 1 || cell.rowSpan !== 1;
+            });
+          })) return;
+      var groups = Array.from(table.children).filter(function (el) { return el.tagName === 'COLGROUP'; });
+      if (groups.length !== 1 || groups[0].children.length !== headers.length ||
+          Array.from(groups[0].children).some(function (col) { return col.tagName !== 'COL' || col.span !== 1; })) return;
+      var cols = Array.from(groups[0].children);
+      var original = cols.map(function (col) { return col.style.width; });
+      var originalWidth = table.style.width, originalMin = table.style.minWidth;
+      var manual = false, widths = [], inputs = [], outputs = [];
+      var panel = document.createElement('details'); panel.className = 'rfh-table-tools';
+      var summary = document.createElement('summary'); summary.textContent = '调整列宽'; panel.appendChild(summary);
+      var tip = document.createElement('p');
+      tip.textContent = '拖动滑块，或聚焦后用方向键微调、Home / End 调到边界。超出可见宽度时横向滚动。仅本页生效，打印恢复自适应。';
+      panel.appendChild(tip);
+      var sliders = document.createElement('div'); sliders.className = 'rfh-table-sliders'; panel.appendChild(sliders);
+      var reset = document.createElement('button'); reset.type = 'button'; reset.textContent = '恢复默认列宽'; reset.disabled = true;
+      function sync() {
+        if (!manual) {
+          var measured = headers.map(function (cell) { return Math.round(cell.getBoundingClientRect().width); });
+          if (measured.some(function (w) { return w <= 0; })) return false;
+          widths = measured;
+        }
+        widths.forEach(function (width, i) {
+          // Bounds include unusually wide/narrow authored defaults without moving them on open.
+          if (!manual) { inputs[i].min = Math.min(MIN, width); inputs[i].max = Math.max(MAX, width); }
+          inputs[i].value = width; outputs[i].value = width + ' px';
+          inputs[i].setAttribute('aria-valuetext', width + ' 像素');
+        });
+        return true;
+      }
+      headers.forEach(function (header, i) {
+        var label = document.createElement('label');
+        var name = document.createElement('span'); name.textContent = header.textContent.trim() || '第 ' + (i + 1) + ' 列';
+        var output = document.createElement('output'); output.setAttribute('aria-hidden', 'true');
+        var input = document.createElement('input'); input.type = 'range'; input.step = '1';
+        input.setAttribute('aria-label', name.textContent + ' 列宽');
+        label.appendChild(name); label.appendChild(output); label.appendChild(input); sliders.appendChild(label);
+        inputs.push(input); outputs.push(output);
+        input.addEventListener('input', function () {
+          var requested = Number(input.value);
+          if (!Number.isFinite(requested) || (!manual && !sync())) return;
+          widths[i] = Math.max(Number(input.min), Math.min(Number(input.max), requested));
+          manual = true;
+          cols.forEach(function (col, n) { col.style.width = widths[n] + 'px'; });
+          table.style.minWidth = '0px'; table.style.width = widths.reduce(function (sum, w) { return sum + w; }, 0) + 'px';
+          reset.disabled = false; sync();
+        });
+      });
+      reset.addEventListener('click', function () {
+        manual = false;
+        cols.forEach(function (col, i) { col.style.width = original[i]; });
+        table.style.width = originalWidth; table.style.minWidth = originalMin;
+        reset.disabled = true; sync();
+      });
+      panel.appendChild(reset);
+      panel.addEventListener('toggle', function () { if (panel.open) sync(); });
+      window.addEventListener('resize', function () { if (panel.open && !manual) sync(); });
+      wrap.parentNode.insertBefore(panel, wrap);
+      table.setAttribute('data-rfh-table-ready', '');
+      // Measurement is deferred to opening the controls, including tables inside closed evidence.
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
 </script><!-- report-for-human:controls:end --></head><body><main class="human-report"><!-- report-for-human:tools:start --><div class="rfh-toolbar" data-rfh-toolbar role="group" aria-label="报告阅读工具">
 <label class="rfh-theme-choice">主题<select data-rfh-theme-toggle aria-label="报告主题" disabled><option value="system">跟随系统</option><option value="light" selected>浅色</option><option value="dark">深色</option></select></label>

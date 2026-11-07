@@ -211,12 +211,9 @@ th {
   background: var(--color-surface-muted);
 }
 
-th:first-child,
-td:first-child,
-th:nth-child(2),
-td:nth-child(2) {
-  width: 1%;
-  white-space: nowrap;
+th,
+td {
+  overflow-wrap: anywhere;
 }
 
 td code {
