@@ -1,0 +1,24 @@
+/* Opt-in long-form tables. Column hints stay in semantic HTML colgroups. */
+.rfh-table-wrap{box-sizing:border-box;min-width:0;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
+.rfh-table-wrap:focus-visible{outline:3px solid var(--green,var(--color-focus,#157664));outline-offset:3px}
+.rfh-table-wrap>.rfh-table{box-sizing:border-box;width:100%;min-width:var(--rfh-table-min-width,0px);max-width:none;table-layout:fixed;border-collapse:collapse}
+.rfh-table-wrap>.rfh-table th,.rfh-table-wrap>.rfh-table td{box-sizing:border-box;width:auto;min-width:0;max-width:none;white-space:normal;overflow-wrap:anywhere;word-break:normal}
+.rfh-table caption{text-align:left;font-weight:600;padding:8px 0;color:inherit}
+.rfh-table-tools{border:0;border-radius:0;padding:0;margin:10px 0;color:var(--ink,var(--color-text,#193b39));background:transparent;font:14px/1.5 "Segoe UI","Microsoft YaHei",sans-serif}
+.rfh-table-tools>summary{width:fit-content;min-height:44px;box-sizing:border-box;padding:10px 8px;cursor:pointer;font-weight:600}
+.rfh-table-tools summary:focus-visible,.rfh-table-tools input:focus-visible,.rfh-table-tools button:focus-visible{outline:3px solid var(--green,var(--color-focus,#157664));outline-offset:3px}
+.rfh-table-tools p{margin:6px 0 12px}
+.rfh-table-sliders{display:flex;flex-wrap:wrap;gap:12px 24px;padding:4px 8px 12px}
+.rfh-table-sliders label{flex:1 1 190px;max-width:320px;display:grid;grid-template-columns:1fr auto;gap:4px 10px;align-items:center;overflow-wrap:anywhere}
+.rfh-table-sliders input{grid-column:1/-1;box-sizing:border-box;width:100%;min-height:44px;margin:0;accent-color:var(--green,var(--color-accent,#157664))}
+.rfh-table-sliders output{font-variant-numeric:tabular-nums;white-space:nowrap}
+.rfh-table-tools button{min-height:44px;border:1px solid var(--line,var(--color-border,#d8e2dc));border-radius:8px;padding:8px 12px;background:var(--white,var(--color-surface,#fff));color:inherit;font:inherit;cursor:pointer}
+.rfh-table-tools button:disabled{opacity:.6;cursor:default}
+@media(max-width:600px){.rfh-table-sliders label{max-width:none;flex-basis:100%}}
+@media print{
+  .rfh-table-tools{display:none!important}
+  .rfh-table-wrap{overflow:visible!important;max-width:none;border:0}
+  .rfh-table-wrap>.rfh-table{width:100%!important;min-width:0!important;max-width:100%!important;table-layout:auto!important}
+  .rfh-table-wrap>.rfh-table col{width:auto!important}
+  .rfh-table-wrap>.rfh-table th,.rfh-table-wrap>.rfh-table td{min-width:0!important;max-width:none!important;white-space:normal!important;overflow-wrap:anywhere}
+}
