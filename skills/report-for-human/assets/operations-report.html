@@ -68,6 +68,30 @@ summary{min-height:28px;padding:5px 0}.hero-status{background:#193b39}.hero-stat
   .rfh-table-wrap>.rfh-table col{width:auto!important}
   .rfh-table-wrap>.rfh-table th,.rfh-table-wrap>.rfh-table td{min-width:0!important;max-width:none!important;white-space:normal!important;overflow-wrap:anywhere}
 }
+
+/* Required reference stays visible without JavaScript and in print. */
+.rfh-decision{padding:16px 20px;border:2px solid var(--color-accent,var(--green,var(--accent,#175cd3)));border-radius:16px;margin:16px 0;background:var(--color-surface,var(--white,var(--surface,#fff)));color:var(--color-text,var(--ink,var(--text,#172b4d)))}
+.rfh-decision h2{font-size:20px;margin:0 0 8px}.rfh-decision p{margin:6px 0}
+.rfh-tabs{margin:24px 0;min-width:0}
+.rfh-tabs>[role="tablist"]{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+.rfh-tabs:not([data-tabs-ready])>[role="tablist"]{display:none}
+.rfh-tabs>[role="tablist"]>button{min-height:44px;max-width:100%;padding:10px 16px;border:1px solid var(--color-border,var(--line,#b9c7da));border-radius:10px;background:var(--color-surface,var(--white,var(--surface,#fff)));color:var(--color-text,var(--ink,var(--text,#172b4d)));font:inherit;cursor:pointer;overflow-wrap:anywhere}
+.rfh-tabs>[role="tablist"]>[aria-selected="true"]{border-color:var(--color-accent,var(--green,var(--accent,#175cd3)));box-shadow:inset 0 -3px var(--color-accent,var(--green,var(--accent,#175cd3)));font-weight:700}
+.rfh-tabs>[role="tabpanel"]{min-width:0}.rfh-tabs>[role="tabpanel"][hidden]{display:none}
+.rfh-tabs button:focus-visible,.rfh-tabs>[role="tabpanel"]:focus-visible,.rfh-image-link:focus-visible,.rfh-image-dialog button:focus-visible{outline:3px solid var(--color-accent,var(--green,var(--accent,#175cd3)));outline-offset:4px}
+.rfh-figure{margin:16px 0;min-width:0}.rfh-image-link{display:block;width:fit-content;max-width:100%;border-radius:8px;cursor:zoom-in}
+.rfh-image-link img{display:block;width:auto;height:auto;max-width:100%;max-height:240px;object-fit:contain;border:1px solid var(--color-border,var(--line,#b9c7da));border-radius:8px}
+.rfh-figure figcaption{margin-top:8px;font-size:14px;line-height:1.6;overflow-wrap:anywhere}
+.rfh-image-dialog{box-sizing:border-box;width:94vw;max-width:1400px;max-height:92vh;padding:16px;border:1px solid var(--color-border,var(--line,#b9c7da));border-radius:16px;background:var(--color-surface,var(--white,var(--surface,#fff)));color:var(--color-text,var(--ink,var(--text,#172b4d)))}
+.rfh-image-dialog::backdrop{background:rgb(0 0 0 / .72)}
+.rfh-image-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:12px}.rfh-image-toolbar strong{flex:1;min-width:0;overflow-wrap:anywhere}
+.rfh-image-toolbar button{min-height:44px;padding:8px 14px;font:inherit;border:1px solid var(--color-border,var(--line,#b9c7da));border-radius:8px;background:var(--color-surface,var(--white,var(--surface,#fff)));color:inherit;cursor:pointer}
+.rfh-image-stage{max-height:65vh;overflow:auto;overscroll-behavior:contain}.rfh-image-stage img{display:block;max-width:100%;max-height:65vh;width:auto;height:auto;object-fit:contain;margin:auto}
+.rfh-image-dialog[data-original="true"] .rfh-image-stage img{max-width:none;max-height:none;margin:0}
+.rfh-image-caption{font-size:14px;line-height:1.5;overflow-wrap:anywhere;margin:12px 0 0}
+html[data-report-theme="dark"] .rfh-decision,html[data-report-theme="dark"] .rfh-tabs>[role="tablist"]>button,html[data-report-theme="dark"] .rfh-image-dialog{background:var(--color-surface,var(--white,var(--surface,#17243a)));color:var(--color-text,var(--ink,var(--text,#ecf2ff)))}
+@media(max-width:600px){.rfh-decision{padding:12px}.rfh-image-dialog{padding:12px}.rfh-image-toolbar strong{flex-basis:100%}.rfh-image-stage,.rfh-image-stage img{max-height:55vh}}
+@media print{.rfh-tabs>[role="tablist"],.rfh-image-dialog{display:none!important}.rfh-tabs>[role="tabpanel"][hidden]{display:block!important}.rfh-image-link img{max-height:240px;max-width:100%}.rfh-decision{background:#fff!important;color:#172b4d!important;break-inside:avoid}}
 </style><script id="rfh-controls-js">/* Local revision, 2026-11-03: copy the recorded source path, never a preview URL. */
 (() => {
   'use strict';
@@ -222,6 +246,98 @@ summary{min-height:28px;padding:5px 0}.hero-status{background:#193b39}.hero-stat
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
+
+/* Offline progressive enhancement: required reference tabs and image inspection. */
+(() => {
+  'use strict';
+  function init() {
+    document.querySelectorAll('.rfh-tabs').forEach(group => {
+      if (group.hasAttribute('data-tabs-ready')) return;
+      const list = [...group.children].find(el => el.getAttribute('role') === 'tablist');
+      if (!list) return;
+      const tabs = [...list.children];
+      const panels = tabs.map(tab => document.getElementById(tab.getAttribute('aria-controls')));
+      if (!tabs.length || tabs.some(tab => tab.tagName !== 'BUTTON' || !tab.id) ||
+          panels.some(panel => !panel || panel.parentElement !== group || panel.getAttribute('role') !== 'tabpanel') ||
+          new Set(panels).size !== tabs.length) return;
+      function select(index, focus = false) {
+        tabs.forEach((tab, i) => {
+          tab.setAttribute('role', 'tab');
+          tab.setAttribute('aria-selected', String(i === index));
+          tab.tabIndex = i === index ? 0 : -1;
+          panels[i].hidden = i !== index;
+          panels[i].setAttribute('aria-labelledby', tab.id);
+          panels[i].tabIndex = 0;
+        });
+        if (focus) tabs[index].focus();
+      }
+      tabs.forEach((tab, index) => {
+        tab.addEventListener('click', () => select(index));
+        tab.addEventListener('keydown', event => {
+          let next;
+          if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+          if (event.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
+          if (event.key === 'Home') next = 0;
+          if (event.key === 'End') next = tabs.length - 1;
+          if (next === undefined) return;
+          event.preventDefault(); select(next, true);
+        });
+      });
+      select(Math.max(0, tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true')));
+      group.setAttribute('data-tabs-ready', '');
+    });
+
+    const links = [...document.querySelectorAll('.rfh-image-link')];
+    if (!links.length || typeof HTMLDialogElement === 'undefined' || !HTMLDialogElement.prototype.showModal) return;
+    const dialog = document.createElement('dialog');
+    dialog.className = 'rfh-image-dialog';
+    dialog.setAttribute('aria-label', '放大图片');
+    const toolbar = document.createElement('div'); toolbar.className = 'rfh-image-toolbar';
+    const title = document.createElement('strong'); title.textContent = '放大图片';
+    const zoom = document.createElement('button'); zoom.type = 'button'; zoom.textContent = '查看原始尺寸'; zoom.setAttribute('aria-pressed', 'false');
+    const close = document.createElement('button'); close.type = 'button'; close.textContent = '关闭';
+    const stage = document.createElement('div'); stage.className = 'rfh-image-stage'; stage.tabIndex = 0; stage.setAttribute('aria-label', '图片查看区，原始尺寸时可滚动');
+    const img = document.createElement('img');
+    const caption = document.createElement('p'); caption.className = 'rfh-image-caption';
+    toolbar.append(title, zoom, close); stage.append(img); dialog.append(toolbar, stage, caption);
+    (document.querySelector('.human-report') || document.body).append(dialog);
+    let opener = null;
+    zoom.addEventListener('click', () => {
+      const original = dialog.dataset.original !== 'true';
+      dialog.dataset.original = String(original);
+      zoom.setAttribute('aria-pressed', String(original));
+      zoom.textContent = original ? '适合窗口' : '查看原始尺寸';
+    });
+    close.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', event => {
+      const box = dialog.getBoundingClientRect();
+      if (event.target === dialog && (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)) dialog.close();
+    });
+    dialog.addEventListener('close', () => {
+      img.removeAttribute('src');
+      if (opener && opener.isConnected) opener.focus();
+      opener = null;
+    });
+    links.forEach(link => {
+      const preview = link.querySelector('img');
+      // The report is self-contained. Never turn an arbitrary link into a network request.
+      const source = link.getAttribute('href') || '';
+      if (!preview || !/^data:image\/(?:png|jpe?g|webp|gif|avif);base64,/i.test(source)) return;
+      link.setAttribute('aria-haspopup', 'dialog');
+      link.addEventListener('click', event => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button > 0) return;
+        img.src = source; img.alt = preview.alt;
+        caption.textContent = link.closest('figure')?.querySelector('figcaption')?.textContent || preview.alt;
+        dialog.dataset.original = 'false'; zoom.setAttribute('aria-pressed', 'false'); zoom.textContent = '查看原始尺寸';
+        opener = link;
+        try { dialog.showModal(); } catch (_) { opener = null; return; }
+        event.preventDefault(); close.focus(); stage.scrollTop = 0; stage.scrollLeft = 0;
+      });
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, {once: true});
+  else init();
+})();
 </script><!-- report-for-human:controls:end --></head><body><main class="human-report"><!-- report-for-human:tools:start --><div class="rfh-toolbar" data-rfh-toolbar role="group" aria-label="报告阅读工具">
 <label class="rfh-theme-choice">主题<select data-rfh-theme-toggle aria-label="报告主题" disabled><option value="system">跟随系统</option><option value="light" selected>浅色</option><option value="dark">深色</option></select></label>
 <button type="button" data-rfh-copy-path disabled>复制文件位置</button>
@@ -231,10 +347,10 @@ summary{min-height:28px;padding:5px 0}.hero-status{background:#193b39}.hero-stat
 </div><!-- report-for-human:tools:end -->
 <nav><span class="wordmark">项目工作台 / 虚构示例</span><div class="links"><a href="#change">改动</a><a href="#boundary">职责</a><a href="#verification">验收</a></div></nav>
 <header><div class="eyebrow">部署汇报 · 设计范例</div><h1>助手配置已分层，<br>正式环境仍待验收。</h1><p class="lead">示例中，身份与任务分开传给模型。使用者仍照常发任务；这里不代表任何真实项目已部署。</p><p class="example-warning">本页全部业务事实、状态和数据均为虚构，用于演示版式，不能作为实测证据。</p>
-<div class="hero-status"><div><strong>示例状态：本地检查完成，线上尚未验收</strong><p>下一步是在实际入口检查请求和回复。</p></div><a class="button" href="#verification">看验收范围 ↓</a></div></header>
+<section class="rfh-decision" aria-labelledby="decision-heading"><h2 id="decision-heading">本次无需你作决定</h2><p><strong>建议：</strong>先保持两套记忆独立，不启用自动共享。</p><p><strong>下一步：</strong>维护者补实际入口与跨用户隔离核验，确认条件后再提出启用建议。</p></section><div class="hero-status"><div><strong>示例状态：本地检查完成，线上尚未验收</strong><p>下一步是在实际入口检查请求和回复。</p></div><a class="button" href="#verification">看验收范围 ↓</a></div></header>
 <div class="facts"><div class="fact"><span>改动位置</span><strong>身份与任务分层</strong><p>图中展示请求的两种角色</p></div><div class="fact"><span>已有数据</span><strong>迁移不在本次范围</strong><p>数据是否保留另需实际核对</p></div><div class="fact"><span>记忆插件</span><strong>暂缓自动记录</strong><p>共享范围尚未完成核对</p></div></div>
 <section id="change"><div class="section-head"><span class="num">01 /</span><div><h2>这次到底改了什么？</h2><p class="intro">用输入的真实层级解释变化，不要求读者认识内部类名。</p></div></div><div class="grid"><div class="panel diagram before"><span class="label">之前 · 示例</span><div class="layer mixed"><b>USER</b><p>助手身份 ＋ 本轮任务</p><span class="small">配置随普通消息传入</span></div><div class="channel">传输通道</div><div class="model">模型</div></div><div class="panel diagram"><span class="label">现在 · 示例</span><div class="layer"><b>SYSTEM</b><p>助手身份与协作定位</p></div><div class="layer user"><b>USER</b><p>本轮任务与上下文</p></div><div class="channel">传输通道</div><div class="model">模型</div></div></div><p class="note"><strong>怎么确认？</strong>正式验收须查看最终请求分层；助手自称身份，不能代替请求证据。</p></section>
 <section id="boundary"><div class="section-head"><span class="num">02 /</span><div><h2>两套记忆各自管什么？</h2><p class="intro">能同时运行，不等于资料可以自动共享。</p></div></div><div class="grid"><div class="panel memory"><div class="memory-head"><h3>对话档案：原始凭据</h3><small>示例职责</small></div><p>保存对话原文，查找来源，按用户和资料范围读取。</p><div class="scope">适合：核对当时说过什么、资料来自哪里。</div></div><div class="panel memory"><div class="memory-head"><h3>项目经验本：提炼经验</h3><small>示例职责</small></div><p>把经过选择的经历整理成长期经验，帮助后续工作回顾。</p><div class="scope">边界：经验摘要需要回到原始凭据核对。</div></div></div><div class="recommend"><strong>示例建议：先保持独立，暂缓自动记录。</strong><p>尚未确认经验本能按用户隔离；只凭两套存储不冲突，不能认定自动共享合适。</p></div></section>
-<section id="verification"><div class="section-head"><span class="num">03 /</span><div><h2>哪些检查支持当前结论？</h2><p class="intro">检查名称与来源并列，保留没有覆盖的地方。</p></div></div><div class="checks"><div class="check"><span>本地分层用例 · 虚构数据</span><span class="ok">示例通过</span></div><div class="check"><span>正式环境完整入口</span><span class="pending">尚未验收</span></div><div class="check"><span>跨用户记忆隔离</span><span class="pending">尚未验证</span></div><div class="check"><span>旧数据保留</span><span class="pending">尚未核对</span></div></div><details><summary>展开来源与验证边界</summary><p>示例版本 example-v1，示例时间 2026-01-08 10:20（UTC+8）。本页状态均为虚构；实际汇报应替换为版本、环境、时间明确的证据。</p><pre><code>{ "system": "助手身份（示意）", "messages": [{ "role": "user", "content": "任务（示意）" }] }</code></pre><p>不要从模板继承部署成功、测试数量或权限结论。报告可读，不代表产品已通过验收。</p></details></section>
+<section id="verification"><div class="section-head"><span class="num">03 /</span><div><h2>哪些检查支持当前结论？</h2><p class="intro">检查名称与来源并列，保留没有覆盖的地方。</p></div></div><div class="checks"><div class="check"><span>本地分层用例 · 虚构数据</span><span class="ok">示例通过</span></div><div class="check"><span>正式环境完整入口</span><span class="pending">尚未验收</span></div><div class="check"><span>跨用户记忆隔离</span><span class="pending">尚未验证</span></div><div class="check"><span>旧数据保留</span><span class="pending">尚未核对</span></div></div><section class="panel" aria-label="必要来源与验证边界"><h3>来源与验证边界</h3><p>示例版本 example-v1，示例时间 2026-01-08 10:20（UTC+8）。本页状态均为虚构；实际汇报应替换为版本、环境、时间明确的证据。</p><details><summary>补充：示意请求（可跳过）</summary><pre><code>{ "system": "助手身份（示意）", "messages": [{ "role": "user", "content": "任务（示意）" }] }</code></pre></details><p>不要从模板继承部署成功、测试数量或权限结论。报告可读，不代表产品已通过验收。</p></section></section>
 <footer><span>去项目化设计范例 · 全部业务事实为虚构</span><span>实际报告须替换日期、状态与来源</span></footer>
 </main></body></html>

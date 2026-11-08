@@ -3,6 +3,7 @@
 *.html
 !skills/report-for-human/assets/reference-report.html
 !skills/report-for-human/assets/operations-report.html
+!skills/report-for-human/examples/navigation.html
 
 # Credentials and local environment
 .env

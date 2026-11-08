@@ -28,5 +28,10 @@
       "action": "核对实际宿主回归",
       "effect": "确认容器替换和停用时的行为与示例一致。"
     }
-  ]
+  ],
+  "decision": {
+    "status": "none",
+    "recommendation": "先补实际宿主验收，本示例不请求合入。",
+    "next_step": "维护者：核对实际宿主回归。"
+  }
 }

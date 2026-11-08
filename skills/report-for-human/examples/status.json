@@ -52,5 +52,10 @@
       "action": "复查精确版本及下载包",
       "effect": "公开后核对完整性和安装/加载，再推进 Release。"
     }
-  ]
+  ],
+  "decision": {
+    "status": "none",
+    "recommendation": "先完成注册表核验，不把上传受理当成已发布。",
+    "next_step": "发布维护者：复查精确版本及下载包。"
+  }
 }
