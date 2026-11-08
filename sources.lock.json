@@ -121,6 +121,13 @@
           "scope": "Explicit first-screen decision and next step; required reference stays visible or in accessible tabs; moderate full-image previews with keyboard dialog inspection",
           "boundaries": "Supplementary records only in details; no-script and print keep reference readable; preserved system/light/dark theme; synthetic demo only",
           "verification": "Mocked DOM and integration checks; browser launch blocked by socket permissions, no native visual or screen-reader acceptance claimed"
+        },
+        "information_layers_revision": {
+          "issue": 65,
+          "base_commit": "aeff8370ff05e4b40b275a27186a9aedda84734a",
+          "scope": "Show current decision, decisive facts and next step; collapse evidence by default; reserve tabs for peer alternatives",
+          "boundaries": "Keep critical risks visible and sources traceable; preserve image inspection and three-state theme; no topic keyword filtering",
+          "verification": "Static structure and mocked DOM checks only; previously denied browser operations not retried"
         }
       }
     }

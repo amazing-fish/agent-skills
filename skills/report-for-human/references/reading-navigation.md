@@ -2,15 +2,17 @@
 
 先决定读者需要看什么，再选容器。首屏回答“需要我决定什么、推荐什么、依据与限制是什么、下一步谁做什么”。纯讲解写“本次无需你作决定”，不虚构授权、审批或待办；决策与核心依据始终常显。小报告使用常显段落即可。
 
-## 三种阅读层级
+## 按当前决定分层
 
-- **必须立即知道**：决策问题、建议、关键依据、风险和下一步，放首屏或紧邻主图，不能在 tabs 或 details 里成为唯一信息。
-- **需要参考**：验收证据、候选对照、实现范围和来源。少量常显；多组同层内容使用 2–4 个明确命名的 tabs，例如“实机证据 / 验收门槛 / 方案与来源”。不要把所有正文逐段装入 tabs。
-- **可以跳过**：补充原始日志、重复记录、延伸材料，才使用 `<details>`，summary 说明可跳过。长 SHA 或技术术语并不自动意味着可跳过。
+- **立即可见**：当前决定或建议、必要事实、影响该决定的风险与下一步。验证结论只有会改变当前选择时才提炼成一句，不连同整组记录搬到首屏。
+- **按需展开**：完整来源、验证过程、版本或字段说明、观测和跟踪记录，默认放闭合 `<details>`。它们应可追溯，但不必逐项阅读；是否重要由本次问题决定，不由标题或术语决定。
+- **切换对照**：确实需要比较的同级方案或业务参考才用 2–4 个 tabs。若读者只是偶尔查阅记录，应折叠而不是做 tab；单个对照不需要导航。
 
-蓝色生成器要求显式 `decision`：`status` 为 `required` 或 `none`，两者均填 `recommendation` 和 `next_step`；`required` 另填 `question`。这是作者核验后的输入，不由渲染器推断是否需要批准。原有 JSON 需补此字段。
+蓝色生成器要求显式 `decision`：`status` 为 `required` 或 `none`，两者均填 `recommendation` 和 `next_step`；`required` 另填 `question`。这是作者核验后的输入，不由渲染器推断是否需要批准。
 
-`evidence` 默认常显。可选 `reference_tabs` 是 2–4 项数组，每项含 `label`、`summary`、`evidence`；仍把共同结论与重大缺口放在首屏。只有 `supplementary_evidence` 折叠。图片可在自定义报告用下面的组件，生成器不读取本机图片或联网取图。
+`evidence` 与已有 `supplementary_evidence` 合并到补充证据折叠区，保留全部来源。可选 `decision_facts` 为少量 `{"text": "一句改变当前决定的事实", "url": "https://…"}`，`url` 可省略；放在首屏，不重复已有结论。`limitations` 只写会改变本次决定或建议的风险摘要，不把所有未验证项逐条升级为常显限制。例如失败导致暂缓时，首屏说“先修复问题，暂不合入”，失败数量、环境和记录放 `evidence`。输入结构无需迁移，但旧报告作者应检查是否有决定性事实需提炼。渲染器不会按关键词猜测重要性。
+
+可选 `reference_tabs` 每项含 `label`、`summary`、`evidence`，只装同级对照，不能把 CI、日志等整个审计目录原样搬入。图片可在自定义报告用下面的组件，生成器不读取本机图片或联网取图。
 
 ## 共用组件
 
@@ -18,12 +20,12 @@
 
 ```html
 <section class="rfh-tabs">
-  <div role="tablist" aria-label="必要参考">
-    <button type="button" role="tab" id="tab-proof" aria-controls="panel-proof">验收证据</button>
-    <button type="button" role="tab" id="tab-source" aria-controls="panel-source">方案与来源</button>
+  <div role="tablist" aria-label="交付方式对照">
+    <button type="button" role="tab" id="tab-proof" aria-controls="panel-proof">当日自取</button>
+    <button type="button" role="tab" id="tab-source" aria-controls="panel-source">次日配送</button>
   </div>
-  <section role="tabpanel" id="panel-proof" aria-labelledby="tab-proof"><h3>验收证据</h3>…</section>
-  <section role="tabpanel" id="panel-source" aria-labelledby="tab-source"><h3>方案与来源</h3>…</section>
+  <section role="tabpanel" id="panel-proof" aria-labelledby="tab-proof"><h3>当日自取</h3>…</section>
+  <section role="tabpanel" id="panel-source" aria-labelledby="tab-source"><h3>次日配送</h3>…</section>
 </section>
 <figure class="rfh-figure">
   <a class="rfh-image-link" href="data:image/png;base64,…" aria-label="放大：验收截图">
