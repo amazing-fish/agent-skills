@@ -59,9 +59,9 @@ def enhance_report(html: str, source_path: str | Path | None = None) -> str:
         return attrs[:-1] + ' data-report-theme="light">'
     html = re.sub(r'<html\b[^>]*>', light_root, html, count=1, flags=re.I)
     css = '\n'.join((ROOT/'assets'/name).read_text(encoding='utf-8')
-                    for name in ('report-controls.css', 'report-tables.css'))
+                    for name in ('report-controls.css', 'report-tables.css', 'report-navigation.css'))
     js = '\n'.join((ROOT/'assets'/name).read_text(encoding='utf-8')
-                   for name in ('report-controls.js', 'report-tables.js'))
+                   for name in ('report-controls.js', 'report-tables.js', 'report-navigation.js'))
     source_meta = '<meta name="report-source-path" content="' + escape(source_path, quote=True) + '">' if source_path else ''
     head = HEAD_START + source_meta + '<style id="rfh-controls-css">' + css + '</style><script id="rfh-controls-js">' + js + '</script>' + HEAD_END
     html = re.sub(r'</head\s*>', lambda m: head + m[0], html, count=1, flags=re.I)

@@ -32,7 +32,9 @@ class ReportRendererTests(unittest.TestCase):
                 html = renderer.render(self.example(kind)); parsed = Elements(html)
                 self.assertIn('虚构', html)
                 self.assertTrue(any(tag == 'h1' for tag, _ in parsed.tags))
-                self.assertTrue(any(tag == 'details' for tag, _ in parsed.tags))
+                self.assertFalse(any(tag == 'details' for tag, _ in parsed.tags))
+                self.assertIn('本次无需你作决定', html)
+                self.assertIn('判断依据与必要参考', html)
                 self.assertFalse(any(tag in {'iframe','img','link'} for tag, _ in parsed.tags))
                 self.assertFalse(any(tag == 'script' and 'src' in a for tag, a in parsed.tags))
                 self.assertNotIn('fetch(', html)
@@ -68,6 +70,38 @@ class ReportRendererTests(unittest.TestCase):
             invalid = copy.deepcopy(d); mutate(invalid)
             with self.assertRaises(ValueError):
                 renderer.render(invalid)
+
+    def test_decision_must_be_explicit_and_stays_before_main_visual(self):
+        d = self.example('change')
+        d.pop('decision')
+        with self.assertRaisesRegex(ValueError, 'Explicit decision'):
+            renderer.render(d)
+        d['decision'] = {'status': 'required', 'question': '是否试用？',
+                         'recommendation': '先验收', 'next_step': '维护者补证据'}
+        page = renderer.render(d)
+        self.assertLess(page.index('需要你决定：是否试用？'), page.index('id="visual-heading"'))
+        self.assertIn('维护者补证据', page)
+        for field in ('question', 'recommendation', 'next_step'):
+            invalid = copy.deepcopy(d); invalid['decision'][field] = ''
+            with self.assertRaises(ValueError):
+                renderer.render(invalid)
+
+    def test_only_explicit_supplements_collapse_and_tabs_start_visible(self):
+        d = self.example('status')
+        d['reference_tabs'] = [
+            {'label': '验收', 'summary': '必要结果', 'evidence': d['evidence']},
+            {'label': '来源', 'summary': '必要来源', 'evidence': []}]
+        d['supplementary_evidence'] = [{'label': '原始记录', 'detail': '可跳过'}]
+        page = renderer.render(d); tags = Elements(page).tags
+        panels = [a for _, a in tags if a.get('role') == 'tabpanel']
+        self.assertEqual(len(panels), 2)
+        self.assertTrue(all('hidden' not in panel for panel in panels))
+        self.assertEqual(sum(tag == 'details' for tag, _ in tags), 1)
+        self.assertIn('<details><summary>补充材料（可跳过）</summary>', page)
+        self.assertLess(page.index('必要结果'), page.index('<details>'))
+        d['reference_tabs'] = d['reference_tabs'][:1]
+        with self.assertRaises(ValueError):
+            renderer.render(d)
 
     def test_reference_is_generated_from_current_synthetic_example(self):
         self.assertEqual(renderer.render(self.example('mechanism')), (SKILL / 'assets/reference-report.html').read_text())

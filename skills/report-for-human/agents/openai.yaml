@@ -2,4 +2,4 @@
 interface:
   display_name: "Report for Human · 清晰汇报"
   short_description: "用前后对照、要求关系、阶段与责任图讲清改动和现状，自动交付新 PR 的 HTML 汇报"
-  default_prompt: "使用 $report-for-human 核对事实，用清晰、简洁的可视化 HTML 讲明我的问题，优先复用我认可的报告或随附的适用范例。"
+  default_prompt: "使用 $report-for-human 核对事实，用清晰、简洁的可视化 HTML 讲明我的问题，首屏说明决策或无需决策、建议与下一步，必要参考常显或用 tabs，附图适中可放大，优先复用我认可的报告或随附的适用范例。"

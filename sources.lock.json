@@ -25,7 +25,8 @@
           55,
           59,
           61,
-          63
+          63,
+          65
         ],
         "notice_location": "skills/report-for-human/SKILL.md",
         "added_files": [
@@ -69,9 +70,15 @@
           "skills/report-for-human/references/tables.md",
           "skills/report-for-human/examples/tables.html",
           "tests/test_report_tables.py",
-          "tests/report_tables_behavior.cjs"
+          "tests/report_tables_behavior.cjs",
+          "skills/report-for-human/assets/report-navigation.css",
+          "skills/report-for-human/assets/report-navigation.js",
+          "skills/report-for-human/examples/navigation.html",
+          "skills/report-for-human/references/reading-navigation.md",
+          "tests/report_navigation_behavior.cjs",
+          "tests/test_report_navigation.py"
         ],
-        "modified_at": "2026-11-07",
+        "modified_at": "2026-11-08",
         "previous_local_name": "explain-diff-for-human-review",
         "local_revision": {
           "base_repository": "amazing-fish/agent-skills",
@@ -107,6 +114,13 @@
           "scope": "Remove universal first-column compression; add opt-in semantic long-table layout and native range column sizing",
           "boundaries": "Single header, 2–8 unspanned columns, explicit colgroup; no saved widths; print and no-JavaScript reading stay available",
           "verification": "Mocked DOM and integration tests are not browser, touchscreen or screen-reader acceptance"
+        },
+        "reading_navigation_revision": {
+          "issue": 65,
+          "base_commit": "5ac1d7dc11fbac3a3e058190637c91f7f60d35cb",
+          "scope": "Explicit first-screen decision and next step; required reference stays visible or in accessible tabs; moderate full-image previews with keyboard dialog inspection",
+          "boundaries": "Supplementary records only in details; no-script and print keep reference readable; preserved system/light/dark theme; synthetic demo only",
+          "verification": "Mocked DOM and integration checks; browser launch blocked by socket permissions, no native visual or screen-reader acceptance claimed"
         }
       }
     }
