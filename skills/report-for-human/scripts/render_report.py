@@ -127,20 +127,20 @@ def decision_summary(d):
 
 
 def references(d):
-    result = '<section aria-labelledby="reference-heading"><h2 id="reference-heading">判断依据与必要参考</h2>' + evidence_list(d.get('evidence', []))
+    result = ''
     tabs = d.get('reference_tabs', [])
     if tabs:
         if not isinstance(tabs, list) or not 2 <= len(tabs) <= 4:
-            raise ValueError('Use 2–4 reference_tabs for distinct reference categories; keep a single section visible')
+            raise ValueError('Use 2–4 reference_tabs for peer alternatives, not verification logs')
         buttons, panels = [], []
         for i, tab in enumerate(tabs):
             label, summary = text(tab['label']), text(tab['summary'])
             buttons.append(f'<button type="button" role="tab" id="reference-tab-{i}" aria-controls="reference-panel-{i}">{label}</button>')
             panels.append(f'<section role="tabpanel" id="reference-panel-{i}" aria-labelledby="reference-tab-{i}"><h3>{label}</h3><p>{summary}</p>' + evidence_list(tab.get('evidence', [])) + '</section>')
-        result += '<div class="rfh-tabs"><div role="tablist" aria-label="必要参考">' + ''.join(buttons) + '</div>' + ''.join(panels) + '</div>'
-    result += '</section>'
-    if d.get('supplementary_evidence'):
-        result += '<details><summary>补充材料（可跳过）</summary>' + evidence_list(d['supplementary_evidence']) + '</details>'
+        result += '<section aria-labelledby="reference-heading"><h2 id="reference-heading">方案对照</h2><div class="rfh-tabs"><div role="tablist" aria-label="同级方案对照">' + ''.join(buttons) + '</div>' + ''.join(panels) + '</div></section>'
+    evidence = d.get('evidence', []) + d.get('supplementary_evidence', [])
+    if evidence:
+        result += '<details><summary>补充：证据与验证记录</summary>' + evidence_list(evidence) + '</details>'
     return result
 
 
@@ -156,6 +156,9 @@ def render(d, source_path=None):
     limits = ''.join('<p class="rf-limit">'+text(x)+'</p>' for x in d.get("limitations", []))
     actions = ''.join('<article class="rf-action">'+badge(a["owner"])+ '<h3>'+text(a["action"])+ '</h3><p>'+text(a["effect"])+ '</p></article>' for a in d.get("next_actions", []))
     decision = decision_summary(d)
+    facts = '<ul class="rf-decision-facts">' + ''.join(
+        '<li>' + (link(f['text'], f['url']) if f.get('url') else text(f['text'])) + '</li>'
+        for f in d.get('decision_facts', [])) + '</ul>' if d.get('decision_facts') else ''
     scenarios = d.get("scenarios", [])
     if scenarios and d["kind"] != "mechanism":
         raise ValueError("Scenario controls are for mechanism graphs")
@@ -184,7 +187,7 @@ def render(d, source_path=None):
     if not isinstance(lines, list) or not 1 <= len(lines) <= 3 or ''.join(lines) != d['title']:
         raise ValueError('title_lines must preserve the exact title in 1–3 semantic lines')
     headline = '<br>'.join(('<em>'+text(line)+'</em>') if i else text(line) for i,line in enumerate(lines))
-    page = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+text(d["title"])+ '</title><style>'+css+'</style></head><body><main class="human-report"><div class="rf-topbar"><span class="rf-brand">'+text(d["scope"])+ '</span><span>'+text(d["as_of"])+ '</span></div><header class="rf-hero"><div><p class="rf-kicker">'+text(d.get("eyebrow", KINDS[d["kind"]]+' · 人类汇报'))+'</p><h1>'+headline+ '</h1><p class="rf-lead">'+text(d["summary"])+ '</p>'+decision+limits+'</div><aside class="rf-spotlight"><small>'+text(spotlight["label"])+ '</small><strong>'+text(spotlight["value"])+ '</strong><p>'+text(spotlight["detail"])+ '</p></aside></header><section class="rf-panel" aria-labelledby="visual-heading"><p class="rf-kicker">核心关系</p><h2 id="visual-heading">'+text(d.get("visual_title", KINDS[d["kind"]]))+'</h2>'+controls+visual(d)
+    page = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+text(d["title"])+ '</title><style>'+css+'</style></head><body><main class="human-report"><div class="rf-topbar"><span class="rf-brand">'+text(d["scope"])+ '</span><span>'+text(d["as_of"])+ '</span></div><header class="rf-hero"><div><p class="rf-kicker">'+text(d.get("eyebrow", KINDS[d["kind"]]+' · 人类汇报'))+'</p><h1>'+headline+ '</h1><p class="rf-lead">'+text(d["summary"])+ '</p>'+decision+facts+limits+'</div><aside class="rf-spotlight"><small>'+text(spotlight["label"])+ '</small><strong>'+text(spotlight["value"])+ '</strong><p>'+text(spotlight["detail"])+ '</p></aside></header><section class="rf-panel" aria-labelledby="visual-heading"><p class="rf-kicker">核心关系</p><h2 id="visual-heading">'+text(d.get("visual_title", KINDS[d["kind"]]))+'</h2>'+controls+visual(d)
     if scenarios:
         page += '<p class="rf-band" id="scenario-result" aria-live="polite">'+text(scenarios[0]["summary"])+ '</p><ul class="rf-print-states">'+static+'</ul><noscript><p>脚本未启用；主图保留默认关系，以下是各假设状态：</p><ul>'+static+'</ul></noscript>'
     page += '</section><section class="rf-actions" aria-label="下一步">'+actions+'</section>'+references(d)+'<footer>'+text(d.get("footer", "自包含 HTML · 状态以标注的取证时间为准 · 汇报不构成操作授权"))+'</footer></main>'
