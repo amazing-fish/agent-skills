@@ -24,7 +24,8 @@
           53,
           55,
           59,
-          61
+          61,
+          63
         ],
         "notice_location": "skills/report-for-human/SKILL.md",
         "added_files": [
@@ -62,7 +63,13 @@
           "skills/report-for-human/references/operations-reports.md",
           "skills/report-for-human/scripts/add_report_controls.py",
           "tests/test_report_controls.py",
-          "tests/report_theme_behavior.cjs"
+          "tests/report_theme_behavior.cjs",
+          "skills/report-for-human/assets/report-tables.css",
+          "skills/report-for-human/assets/report-tables.js",
+          "skills/report-for-human/references/tables.md",
+          "skills/report-for-human/examples/tables.html",
+          "tests/test_report_tables.py",
+          "tests/report_tables_behavior.cjs"
         ],
         "modified_at": "2026-11-07",
         "previous_local_name": "explain-diff-for-human-review",
@@ -93,6 +100,13 @@
           "base_commit": "05cad918db60b5b160f139a159014d8fb3594c82",
           "scope": "Add explicit system/light/dark preference; preserve approved light default and existing light/dark persistence",
           "verification": "Mocked DOM tests are logic evidence, not device-specific visual acceptance"
+        },
+        "table_layout_revision": {
+          "issue": 63,
+          "base_commit": "80df920bff1b29f5f473636b6f5bd96c148713ec",
+          "scope": "Remove universal first-column compression; add opt-in semantic long-table layout and native range column sizing",
+          "boundaries": "Single header, 2–8 unspanned columns, explicit colgroup; no saved widths; print and no-JavaScript reading stay available",
+          "verification": "Mocked DOM and integration tests are not browser, touchscreen or screen-reader acceptance"
         }
       }
     }
