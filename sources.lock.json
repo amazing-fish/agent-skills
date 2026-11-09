@@ -26,7 +26,8 @@
           59,
           61,
           63,
-          65
+          65,
+          68
         ],
         "notice_location": "skills/report-for-human/SKILL.md",
         "added_files": [
@@ -76,9 +77,10 @@
           "skills/report-for-human/examples/navigation.html",
           "skills/report-for-human/references/reading-navigation.md",
           "tests/report_navigation_behavior.cjs",
-          "tests/test_report_navigation.py"
+          "tests/test_report_navigation.py",
+          "skills/report-for-human/examples/behavior-changes.json"
         ],
-        "modified_at": "2026-11-08",
+        "modified_at": "2026-11-09",
         "previous_local_name": "explain-diff-for-human-review",
         "local_revision": {
           "base_repository": "amazing-fish/agent-skills",
@@ -128,6 +130,12 @@
           "scope": "Show current decision, decisive facts and next step; collapse evidence by default; reserve tabs for peer alternatives",
           "boundaries": "Keep critical risks visible and sources traceable; preserve image inspection and three-state theme; no topic keyword filtering",
           "verification": "Static structure and mocked DOM checks only; previously denied browser operations not retried"
+        },
+        "behavior_changes_revision": {
+          "issue": 68,
+          "base_commit": "4c6de42b3c9f9905b62d89a020b1ea70781268b8",
+          "scope": "Keep verified before/after behavior, functionality and interaction costs, fallback conditions, and disputed tradeoffs visible even without a decision",
+          "boundaries": "Optional additive renderer input; preserve legacy comparison, evidence collapse, three-state theme, image controls and screenshot gaps; no business materials"
         }
       }
     }

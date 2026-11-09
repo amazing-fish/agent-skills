@@ -171,6 +171,54 @@ class ReportRendererTests(unittest.TestCase):
     def test_reference_is_generated_from_current_synthetic_example(self):
         self.assertEqual(renderer.render(self.example('mechanism')), (SKILL / 'assets/reference-report.html').read_text())
 
+    def test_behavior_changes_stay_visible_with_sources_and_without_decision(self):
+        changes = self.example('behavior-changes')['behavior_changes']
+        for kind in renderer.KINDS:
+            with self.subTest(kind=kind):
+                d = self.example(kind)
+                d['behavior_changes'] = copy.deepcopy(changes)
+                d['behavior_changes'][0]['url'] = 'https://example.com/fixed-version'
+                parsed = Elements(renderer.render(d))
+                for item in changes:
+                    for field in ('title', 'before', 'after', 'impact', 'fallback', 'basis'):
+                        contexts = [ancestors for data, ancestors in parsed.content if data == item[field]]
+                        self.assertEqual(len(contexts), 1, (kind, field))
+                        self.assertFalse(any(tag == 'details' or attrs.get('role') == 'tabpanel'
+                                             for tag, attrs in contexts[0]))
+                self.assertTrue(any(tag == 'a' and attrs.get('href') == 'https://example.com/fixed-version'
+                                    for tag, attrs in parsed.tags))
+                self.assertIn('本次无需你作决定', renderer.render(d))
+                if kind == 'change':
+                    self.assertNotIn(d['before'], renderer.render(d))
+
+    def test_behavior_comparison_rejects_incomplete_or_unsafe_input(self):
+        d = self.example('behavior-changes')
+        for field in ('title', 'before', 'after', 'impact', 'fallback', 'basis'):
+            for value in ('', None, 1):
+                invalid = copy.deepcopy(d); invalid['behavior_changes'][0][field] = value
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    renderer.render(invalid)
+        for items in (None, {}, 'text', [None]):
+            invalid = copy.deepcopy(d); invalid['behavior_changes'] = items
+            with self.subTest(items=items), self.assertRaises(ValueError):
+                renderer.render(invalid)
+        d['behavior_changes'][0]['url'] = 'javascript:alert(1)'
+        with self.assertRaises(ValueError):
+            renderer.render(d)
+
+    def test_behavior_comparison_escapes_text_and_keeps_legacy_input(self):
+        d = self.example('behavior-changes')
+        for field in ('title', 'before', 'after', 'impact', 'fallback', 'basis'):
+            d['behavior_changes'][0][field] = '<img src=x onerror=alert(1)>'
+        page = renderer.render(d)
+        self.assertNotIn('<img', page)
+        self.assertIn('&lt;img', page)
+        old = self.example('change')
+        self.assertIn(old['before'], renderer.render(old))
+        self.assertNotIn('使用者影响与代价：', renderer.render(old))
+        old['behavior_changes'] = []
+        self.assertIn(old['after'], renderer.render(old))
+
 
 if __name__ == '__main__':
     unittest.main()
