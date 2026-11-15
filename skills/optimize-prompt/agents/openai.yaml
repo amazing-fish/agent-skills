@@ -1,4 +1,4 @@
 interface:
-  display_name: "Prompt 优化器"
-  short_description: "将原始要求改写为可直接使用、可按需结合实际上下文的 Prompt"
-  default_prompt: "Use $optimize-prompt to rewrite my requirements into a paste-ready prompt, grounding it in the current context when needed without executing the task."
+  display_name: "Claude Code Prompt 优化器"
+  short_description: "将原始需求整理为可直接交给 Claude Code 执行的简洁提示词"
+  default_prompt: "Use $optimize-prompt to turn my requirements into a concise Claude Code prompt without executing the task."
