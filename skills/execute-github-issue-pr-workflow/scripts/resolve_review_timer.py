@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-REVIEW_WAIT_MINUTES = (3, 2, 1, 4)
+REVIEW_WAIT_MINUTES = (6, 4, 2, 8)
 REVIEW_DELAY = timedelta(minutes=REVIEW_WAIT_MINUTES[0])
 NEXT_RUN_TOLERANCE = timedelta(seconds=60)
 WEEKDAY_CODES = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
