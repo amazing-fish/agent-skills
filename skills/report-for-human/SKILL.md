@@ -7,7 +7,6 @@ description: 生成人能一眼看懂的可视化 HTML 汇报。用户要求 rep
 
 > 由 `explain-diff-for-human-review` 重构，保留 `GitHubxsy/agent-skills` 的来源与 Apache-2.0 归属；原上游版本与本地修改见仓库 `sources.lock.json`。
 > 本机修改于 2026-11-02：从用户认可的部署报告增加温和的运维汇报范例；保留上游蓝色主题与生成器。来源与适用边界见 [运维范例](references/operations-reports.md)。
-
 > 本地修订（#61）：增加跟随系统／浅色／深色三态，保留默认浅色及已有证据规则。
 
 让读者只看标题和主图，就能说出：**现在是什么、需要我决定什么（或无需决策）、依据是什么、下一步谁做什么**。完成深入取证，再把解释压缩成可视化 HTML。
@@ -47,11 +46,7 @@ description: 生成人能一眼看懂的可视化 HTML 汇报。用户要求 rep
 
 顶部必须提供**跟随系统／浅色／深色三态主题选择器**与**复制文件位置按钮**，蓝色、运维和自定义报告均适用。保留首次默认浅色；用户可显式选择跟随系统，并随系统主题变化更新。记住三态选择，兼容已有浅色/深色记录；存储受限时仍能在当前页切换。实际配色仍使用 `html[data-report-theme="light|dark"]`，区分用户选择与解析后的配色，不只改控件文案。
 
-蓝色生成器已内置共用控件并记录最终输出路径。运维范例或自定义 HTML 落到实际交付位置后，都执行：
-
-```bash
-python <skill-root>/scripts/add_report_controls.py --input <report.html>
-```
+蓝色生成器已内置共用控件并记录最终输出路径。运维范例或自定义 HTML 落到实际交付位置后，都执行 `python <skill-root>/scripts/add_report_controls.py --input <report.html>`：
 
 该脚本原位内联共用样式与交互，可重复运行，不会重复添加控件；自定义配色须响应上述主题属性。**文件位置是生成时记录的真实来源路径，不是浏览器预览地址。** 生成器将最终文件绝对路径写入 `report-source-path` 元数据；经 sandbox/托管预览打开时仍复制该路径。执行环境路径与用户实际路径不同时，用 `--source-path <用户实际绝对路径>` 显式绑定，不能猜测挂载映射；移动文件后重新运行绑定新位置。未记录真实路径时明确提示未绑定，不能退回复制预览 URL。只在用户点击时写剪贴板；失败时显示并选中真实位置供手动复制，不能误报成功。打印隐藏工具栏，无脚本仍可读正文与凭据。
 
@@ -59,11 +54,7 @@ python <skill-root>/scripts/add_report_controls.py --input <report.html>
 
 先读 [视觉配方](references/visual-design.md)，查看 `assets/reference-report.html`；有图像工具时查看 `assets/reference-preview.png`（历史配色参考，当前结构以 HTML 为准）。它们来自本次认可的 Piano 发布地图的视觉语言，内容已去项目化且明确为虚构示例。
 
-**选择蓝色主题时，默认使用随附生成器，继承版式而非重新凭印象设计：**
-
-```bash
-python <skill-root>/scripts/render_report.py --input <verified-report.json> --output <report.html>
-```
+**选择蓝色主题时，默认使用随附生成器（`python <skill-root>/scripts/render_report.py --input <verified-report.json> --output <report.html>`），继承版式而非重新凭印象设计：**
 
 按 `examples/change.json`、`requirements.json`、`status.json`、`mechanism.json` 的同类结构填写已核验事实。生成器只负责呈现，不获取来源、不判断事实、不自动声称通过。先运行一份最接近的示例，再替换内容。
 
