@@ -63,12 +63,12 @@ skills/
 
 ### execute-github-issue-pr-workflow
 
-按受控闭环推进 GitHub Issue、实现、PR、Codex Review、评论修复、人工 diff 审查、合并授权和文档更新。
+按受控闭环推进 GitHub Issue、实现、PR、Codex / CodeRabbit 多 Reviewer 审查、评论修复、人工 diff 审查、合并授权和文档更新，并在协作产出中显式标注执行者身份（如 `neon` 调度器为 `氖基米`、`carbon` 调度器为 `碳基米`）。
 
 - 定义：[skills/execute-github-issue-pr-workflow/SKILL.md](skills/execute-github-issue-pr-workflow/SKILL.md)
 - 默认模式：人工批准当前 PR 合入并进入下一 Issue
 - 自动暂存模式：低风险 PR 保持未合并并继续推进，最终由人类统一决定方向
-- 评审节拍：依次等待 3+2+1+4 分钟，累计第 3、5、6、10 分钟检查；每次只设一个一次性定时器，触发后刷新一次，完成即停止，第 10 分钟仍未完成则记录 pending。跨会话保留阶段和截止时间，并报告目标本地时间、目标时区和已核验 next run。完整规则以 [workflow Skill](skills/execute-github-issue-pr-workflow/SKILL.md) 为事实来源
+- 评审节拍：依次等待 6+4+2+8 分钟，累计第 6、10、12、20 分钟检查（覆盖 Codex 与 CodeRabbit 等新增 AI reviewer 检查/线程）；每次只设一个一次性定时器，触发后刷新一次，完成即停止，第 20 分钟仍未完成则记录 pending。跨会话保留阶段和截止时间，并报告目标本地时间、目标时区和已核验 next run。完整规则以 [workflow Skill](skills/execute-github-issue-pr-workflow/SKILL.md) 为事实来源
 
 ### douyin-video-analysis
 

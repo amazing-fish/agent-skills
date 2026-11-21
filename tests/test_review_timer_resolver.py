@@ -102,7 +102,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
             tzinfo=ZoneInfo("Asia/Shanghai"),
         )
         self.now_utc = self.started_at.astimezone(timezone.utc)
-        self.target_at_utc = self.now_utc + timedelta(minutes=3)
+        self.target_at_utc = self.now_utc + timedelta(minutes=6)
 
     def test_resolves_target_and_rrule_fields_from_real_zoneinfo(self):
         resolution = resolver.resolve_review_timer(
@@ -113,13 +113,13 @@ class ReviewTimerResolverTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            datetime.fromisoformat("2026-07-26T17:35:30+00:00"),
+            datetime.fromisoformat("2026-07-26T17:38:30+00:00"),
             resolution.target_at_utc,
         )
         self.assertEqual(
             {
                 "BYHOUR": 17,
-                "BYMINUTE": 35,
+                "BYMINUTE": 38,
                 "BYSECOND": 30,
                 "BYDAY": "SU",
             },
@@ -256,7 +256,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
                     0,
                     tzinfo=ZoneInfo("Europe/London"),
                 ),
-                datetime.fromisoformat("2026-01-15T12:03:00+00:00"),
+                datetime.fromisoformat("2026-01-15T12:06:00+00:00"),
                 12,
             ),
             (
@@ -269,7 +269,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
                     0,
                     tzinfo=ZoneInfo("Europe/London"),
                 ),
-                datetime.fromisoformat("2026-07-15T11:03:00+00:00"),
+                datetime.fromisoformat("2026-07-15T11:06:00+00:00"),
                 11,
             ),
         )
@@ -320,7 +320,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
             10,
             25,
             1,
-            1,
+            4,
             tzinfo=timezone.utc,
         )
 
@@ -334,7 +334,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
         self.assertEqual(timedelta(hours=1), started_at.utcoffset())
         self.assertEqual(expected_target_at_utc, resolution.target_at_utc)
         self.assertEqual(
-            timedelta(minutes=3),
+            timedelta(minutes=6),
             resolution.target_at_utc - started_at.astimezone(timezone.utc),
         )
         self.assertEqual(timedelta(0), resolution.target_at_local.utcoffset())
@@ -342,7 +342,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
         self.assertEqual(
             {
                 "BYHOUR": 1,
-                "BYMINUTE": 1,
+                "BYMINUTE": 4,
                 "BYSECOND": 0,
                 "BYDAY": "SU",
             },
@@ -373,7 +373,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
         self.assertEqual(0, completed.returncode, completed.stderr)
         payload = json.loads(completed.stdout)
         self.assertEqual(
-            "2026-07-26T17:35:30+00:00",
+            "2026-07-26T17:38:30+00:00",
             payload["target_at_utc"],
         )
         self.assertEqual("SU", payload["rrule_fields"]["BYDAY"])
@@ -392,7 +392,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
 
     def test_all_stages_keep_the_original_cycle_start(self):
         for stage, now_minutes, deadline_minutes in (
-            (1, 0, 3), (2, 3.5, 5), (3, 5.5, 6), (4, 6.5, 10),
+            (1, 0, 6), (2, 6.5, 10), (3, 10.5, 12), (4, 12.5, 20),
         ):
             with self.subTest(stage=stage):
                 now = self.now_utc + timedelta(minutes=now_minutes)
@@ -411,7 +411,7 @@ class ReviewTimerResolverTests(unittest.TestCase):
                 self.assertEqual("accept", resolution.next_run.decision)
 
     def test_resume_cannot_reschedule_expired_stages(self):
-        resumed_at = self.now_utc + timedelta(minutes=5, seconds=30)
+        resumed_at = self.now_utc + timedelta(minutes=10, seconds=30)
         for stage in (1, 2):
             with self.subTest(stage=stage):
                 with self.assertRaisesRegex(ValueError, "deadline has elapsed"):
@@ -428,11 +428,11 @@ class ReviewTimerResolverTests(unittest.TestCase):
             cycle_started_at=self.started_at,
         )
         self.assertEqual(
-            self.now_utc + timedelta(minutes=6), resolution.target_at_utc
+            self.now_utc + timedelta(minutes=12), resolution.target_at_utc
         )
         with self.assertRaisesRegex(ValueError, "deadline has elapsed"):
             resolver.resolve_review_timer(
-                now=self.now_utc + timedelta(minutes=10),
+                now=self.now_utc + timedelta(minutes=20),
                 user_timezone="Asia/Shanghai",
                 review_stage=4,
                 cycle_started_at=self.started_at,
@@ -461,8 +461,8 @@ class ReviewTimerResolverTests(unittest.TestCase):
             )
 
     def test_cli_preserves_cycle_and_stage_after_resume(self):
-        now = self.now_utc + timedelta(minutes=7)
-        target = self.now_utc + timedelta(minutes=10)
+        now = self.now_utc + timedelta(minutes=13)
+        target = self.now_utc + timedelta(minutes=20)
         completed = subprocess.run(
             [
                 sys.executable, str(SCRIPT_PATH),

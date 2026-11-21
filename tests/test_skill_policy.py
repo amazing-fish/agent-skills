@@ -313,8 +313,8 @@ class SkillPolicyTests(unittest.TestCase):
             if line.startswith("- 评审节拍：")
         )
         for required_summary in (
-            "3+2+1+4 分钟",
-            "第 3、5、6、10 分钟",
+            "6+4+2+8 分钟",
+            "第 6、10、12、20 分钟",
             "一次性定时器",
             "触发后刷新一次",
             "目标本地时间",
@@ -325,6 +325,21 @@ class SkillPolicyTests(unittest.TestCase):
         ):
             with self.subTest(required_summary=required_summary):
                 self.assertIn(required_summary, timer_summary)
+
+    def test_workflow_requires_executor_identity_and_multi_reviewer_coverage(self):
+        workflow = (
+            ROOT / "skills" / "execute-github-issue-pr-workflow" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        for required_policy in (
+            "执行者",
+            "neon",
+            "氖基米",
+            "carbon",
+            "碳基米",
+            "CodeRabbit",
+        ):
+            with self.subTest(required_policy=required_policy):
+                self.assertIn(required_policy, workflow)
 
     def test_github_diff_policy_is_links_only(self):
         skill = (

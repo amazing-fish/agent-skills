@@ -1,6 +1,6 @@
 ---
 name: execute-github-issue-pr-workflow
-description: Execute a lightweight governed GitHub Issue-to-PR delivery loop with an optional independent goal-prompt preflight, focused implementation, clickable commit and PR links, staged 3+2+1+4-minute Codex review waits, comment resolution, visual human reports, controlled merge or staging, Issue reconciliation, and documentation updates. Use when repeatedly advancing repository Issues, shepherding PRs, handling Codex feedback, or following the user's established GitHub workflow.
+description: Execute a lightweight governed GitHub Issue-to-PR delivery loop with an optional independent goal-prompt preflight, executor identity tracking, focused implementation, clickable commit and PR links, staged 6+4+2+8-minute multi-reviewer AI review waits, comment resolution, visual human reports, controlled merge or staging, Issue reconciliation, and documentation updates. Use when repeatedly advancing repository Issues, shepherding PRs, handling Codex and CodeRabbit feedback, or following the user's established GitHub workflow.
 ---
 
 # Execute GitHub Issue–PR Workflow
@@ -11,7 +11,11 @@ Treat GitHub remote state as authoritative. Preserve unrelated work and never co
 
 1. Inspect repository instructions, ownership, default branch, working tree, relevant Issues/PRs, checks, and docs.
 2. For a user-owned repository, create a ready-for-review PR without extra approval. For external upstreams, work only in the user's fork and obtain approval before creating an upstream Issue, opening a Draft upstream PR, or otherwise contacting maintainers.
-3. Reuse an existing Issue when it covers the work; otherwise create one before non-trivial implementation where authorized. Keep scope and acceptance criteria bounded.
+3. **Executor identity (`执行者`):** When multiple schedulers or agents share one repository account, always state `执行者: <name>` in PR descriptions, Issue/PR comments, progress updates, and human reports:
+   - Antigravity `neon` scheduler → `氖基米` (`氖基米 (neon)`)
+   - Antigravity `carbon` scheduler → `碳基米` (`碳基米 (carbon)`)
+   - Other runtimes/agents → use their explicit runtime/machine/agent label (never guess an unverified scheduler).
+4. Reuse an existing Issue when it covers the work; otherwise create one before non-trivial implementation where authorized. Keep scope and acceptance criteria bounded.
 4. Use neutral links such as `Refs #N` unless automatic Issue closure is explicitly authorized.
 5. Use default approval mode unless the user explicitly enables automatic staging mode:
    - **Default:** stop after review and diff evidence; merging requires a later explicit approval for the current PR and exact HEAD, and only then may the next Issue start.
@@ -54,11 +58,13 @@ After creating each new PR, use the installed `report-for-human` skill to immedi
 
 ## Check Codex Review efficiently
 
+Multi-reviewer repositories run **Codex** alongside secondary AI reviewers such as **CodeRabbit**. Track Codex state/reactions together with CodeRabbit (and other configured AI reviewer) checks and unresolved inline threads across the same wait cadence.
+
 ### Schedule the review timer safely
 
-Treat each deadline in the 3+2+1+4-minute sequence as an absolute instant, not as local wall-clock fields. Use [the review timer contract](references/review-timer-contract.json) as the normative state-machine data. It preserves the native relative schedule, verified UTC heartbeat fallback, pending stop, and fail-closed cleanup outcomes. If this Skill contains `scripts/resolve_review_timer.py`, prefer it to compute `target_at_utc`, derive the UTC RRULE fields, and verify the resolved next run. If the script is unavailable, apply the same calculations and contract directly.
+Treat each deadline in the 6+4+2+8-minute sequence as an absolute instant, not as local wall-clock fields. Use [the review timer contract](references/review-timer-contract.json) as the normative state-machine data. It preserves the native relative schedule, verified UTC heartbeat fallback, pending stop, and fail-closed cleanup outcomes. If this Skill contains `scripts/resolve_review_timer.py`, prefer it to compute `target_at_utc`, derive the UTC RRULE fields, and verify the resolved next run. If the script is unavailable, apply the same calculations and contract directly.
 
-1. Capture `cycle_started_at_utc` once for each new HEAD. For stage 1–4 compute `target_at_utc = cycle_started_at_utc + [3, 5, 6, 10][stage - 1] minutes`. Use `--stage` and `--cycle-start` when calling the resolver for an existing cycle; never replace the saved cycle start with the current time. Prefer an environment-native relative one-shot wait. For Codex Desktop, use a heartbeat attached to the current thread; do not create a standalone cron automation for this follow-up.
+1. Capture `cycle_started_at_utc` once for each new HEAD. For stage 1–4 compute `target_at_utc = cycle_started_at_utc + [6, 10, 12, 20][stage - 1] minutes`. Use `--stage` and `--cycle-start` when calling the resolver for an existing cycle; never replace the saved cycle start with the current time. Prefer an environment-native relative one-shot wait. For Codex Desktop, use a heartbeat attached to the current thread; do not create a standalone cron automation for this follow-up.
 2. If the heartbeat surface accepts only an RRULE, derive `BYHOUR`, `BYMINUTE`, `BYSECOND`, and `BYDAY` from `target_at_utc` in UTC and ensure the first future occurrence identifies the intended instant. Never copy the user's local wall-clock fields into the RRULE. Use a timezone-aware conversion only to present the target in the user's time zone.
 3. Treat a rejected `DTSTART`, a relative `COUNT=1` rule with no future run, or any other native scheduling failure as a failure of that path. Do not fall back to local wall-clock fields. Try a UTC RRULE heartbeat only when its first occurrence can be verified; if that path is also rejected, report `Codex review pending`.
 4. After creating or updating the timer, read its resolved next run. If the surface does not expose that value, read equivalent persisted schedule evidence and independently resolve its first future occurrence. Accept it only when it is in the future and differs from `target_at_utc` by at most 60 seconds.
@@ -67,14 +73,14 @@ Treat each deadline in the 3+2+1+4-minute sequence as an absolute instant, not a
 
 For each new ready-for-review PR HEAD:
 
-1. Use the wait sequence **3 minutes → 2 minutes → 1 minute → 4 minutes** for each HEAD: check at cumulative minutes **3, 5, 6 and 10** from the cycle start. Record PR URL, HEAD, cycle start, completed wait stage, next deadline and whether `@codex review` was posted. Set only the next one-shot timer under the contract above; do not poll while it is active. On a later turn, resume the saved stage and deadline rather than restarting or duplicating the sequence.
-2. At each deadline, refresh once: HEAD, Codex state/reactions, review decisions, conversation and inline comments, unresolved threads, checks, and mergeability. If HEAD changed, clean up the old timer and begin the 3-minute first stage for the new HEAD. After a delayed resumption, refresh once, skip elapsed deadlines and schedule only the next future stage; do not issue catch-up polls.
+1. Use the wait sequence **6 minutes → 4 minutes → 2 minutes → 8 minutes** for each HEAD: check at cumulative minutes **6, 10, 12 and 20** from the cycle start. Record PR URL, HEAD, cycle start, completed wait stage, next deadline and whether `@codex review` was posted. Set only the next one-shot timer under the contract above; do not poll while it is active. On a later turn, resume the saved stage and deadline rather than restarting or duplicating the sequence.
+2. At each deadline, refresh once: HEAD, Codex state/reactions, secondary AI reviewer checks/comments (such as CodeRabbit), review decisions, conversation and inline comments, unresolved threads, checks, and mergeability. If HEAD changed, clean up the old timer and begin the 6-minute first stage for the new HEAD. After a delayed resumption, refresh once, skip elapsed deadlines and schedule only the next future stage; do not issue catch-up polls.
 3. Classify that refresh:
-   - **Passed:** stop waiting. The repository's current Codex-bot 👍 on the PR is sufficient. Do not require a newly created reaction, commit review, `commit_id`, or SHA binding. This assumes the configured bot maintains current PR-level state after pushes; stop if it does not. Continue only if no actionable feedback or relevant failed check remains; document any explicit check waiver.
-   - **In progress:** do not mention the bot again; advance to the next wait stage if one remains.
+   - **Passed:** stop waiting. The repository's current Codex-bot 👍 on the PR is sufficient. Do not require a newly created reaction, commit review, `commit_id`, or SHA binding. This assumes the configured bot maintains current PR-level state after pushes; stop if it does not. Continue only if no actionable feedback or relevant failed/pending check (including CodeRabbit or other configured AI reviewers) and no unresolved thread from any reviewer remains; document any explicit check waiver.
+   - **In progress:** do not mention the bot again; advance to the next wait stage if one remains (including when Codex already reacted 👍 while a secondary AI reviewer check such as CodeRabbit is still pending).
    - **Not triggered:** post `@codex review` once for this review cycle and return the comment URL. Preserve the current sequence; do not repeat an already posted trigger or reset the waits after a turn boundary.
-   - **Findings or failures:** fix in scope issues on the same branch, test, push, and return the new commit URL. Start a fresh sequence for the new HEAD.
-4. After a pending classification, schedule only the next future stage under the timer contract if one remains. Never infer success from elapsed time, silence or acknowledgement. If the final 10-minute check is still pending, stop automatic waiting for that HEAD and checkpoint the exhausted sequence; do not loop or silently restart it.
+   - **Findings or failures:** fix in scope issues on the same branch (from Codex, CodeRabbit, other AI reviewers, or failed checks), test, push, and return the new commit URL. Start a fresh sequence for the new HEAD.
+4. After a pending classification, schedule only the next future stage under the timer contract if one remains. Never infer success from elapsed time, silence or acknowledgement. If the final 20-minute check is still pending, stop automatic waiting for that HEAD and checkpoint the exhausted sequence; do not loop or silently restart it.
 5. If waiting cannot continue earlier, preserve the current stage. Report `Codex review pending`, PR URL, HEAD, robot state, completed stage and next refresh time, or explicitly state that the sequence is exhausted and a later refresh is needed.
 
 ## Resolve findings
@@ -90,8 +96,8 @@ Never merge a PR in the same assistant turn that created it. A timer or auto-mer
 Require all of the following:
 
 - acceptance criteria and all relevant checks pass or have an explicit documented waiver;
-- the PR currently shows the Codex bot's 👍;
-- no blocking review decision, unresolved feedback, conflict, or scope decision remains;
+- the PR currently shows the Codex bot's 👍 and no secondary AI reviewer (e.g., CodeRabbit) check is pending or failing;
+- no blocking review decision, unresolved feedback (from Codex, CodeRabbit, or human), conflict, or scope decision remains;
 - validation and docs match the current code;
 - the installed `report-for-human` skill produces a report for the current diff.
 
