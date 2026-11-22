@@ -76,7 +76,7 @@ For each new ready-for-review PR HEAD:
 1. Use the wait sequence **6 minutes → 4 minutes → 2 minutes → 8 minutes** for each HEAD: check at cumulative minutes **6, 10, 12 and 20** from the cycle start. Record PR URL, HEAD, cycle start, completed wait stage, next deadline and configured AI reviewer trigger/check state. Set only the next one-shot timer under the contract above; do not poll while it is active. On a later turn, resume the saved stage and deadline rather than restarting or duplicating the sequence.
 2. At each deadline, refresh once: HEAD, configured AI reviewer checks/comments (such as CodeRabbit), review decisions, conversation and inline comments, unresolved threads, CI checks, and mergeability. If HEAD changed, clean up the old timer and begin the 6-minute first stage for the new HEAD. After a delayed resumption, refresh once, skip elapsed deadlines and schedule only the next future stage; do not issue catch-up polls.
 3. Classify that refresh:
-   - **Passed:** stop waiting. Continue only if configured AI reviewer checks (such as CodeRabbit) and required CI checks succeeded, no actionable feedback remains, and no unresolved thread from any reviewer remains; document any explicit check waiver.
+   - **Passed:** stop waiting. Continue only if there is evidence that configured AI reviewer checks (such as CodeRabbit) actually completed a review of the current HEAD (not merely a green status check—treat skipped, failed, or rate-limited reviews as pending or blocked), required CI checks succeeded, no actionable feedback remains, and no unresolved thread from any reviewer remains; document any explicit check waiver.
    - **In progress:** do not nag or re-trigger the reviewer while an AI reviewer check (such as CodeRabbit) or CI check is still pending; advance to the next wait stage if one remains.
    - **Not triggered:** trigger only an explicitly configured active AI reviewer once if needed and return the comment or check URL. Preserve the current sequence; do not repeat an already posted trigger or reset the waits after a turn boundary.
    - **Findings or failures:** fix in scope issues on the same branch (from CodeRabbit, other configured AI reviewers, human reviewers, or failed checks), test, push, and return the new commit URL. Start a fresh sequence for the new HEAD.
@@ -96,14 +96,14 @@ Never merge a PR in the same assistant turn that created it. A timer or auto-mer
 Require all of the following:
 
 - acceptance criteria and all relevant checks pass or have an explicit documented waiver;
-- configured AI reviewer checks (e.g., CodeRabbit) have completed cleanly with no pending or failing status;
-- no blocking review decision, unresolved feedback (from CodeRabbit, other configured reviewers, or human reviewers), conflict, or scope decision remains;
+- configured AI reviewer checks (e.g., CodeRabbit) show completed review evidence for the current HEAD (treating skipped, failed, or rate-limited reviews as blocked) with no pending or failing status;
+- no blocking review decision, unresolved feedback (from CodeRabbit, other configured reviewers, or human reviewers), unresolved review thread, conflict, or scope decision remains;
 - validation and docs match the current code;
 - the installed `report-for-human` skill produces a report for the current diff.
 
 In default mode, present the report for the current base and HEAD and request approval naming that PR, base SHA, and HEAD SHA; any base or HEAD change invalidates the report and approval. Merge only in a later user turn. In automatic staging mode, stage only when the report says `建议合入` with no confirmed medium-or-higher risk or unresolved decision. Automatic staging never authorizes merging.
 
-Immediately before an authorized merge, require base and HEAD to equal the reported and approved SHAs, then recheck PR state, checks, threads, and mergeability. Never bypass protection or force-push.
+Immediately before an authorized merge, require base and HEAD to equal the reported and approved SHAs, then recheck PR state, checks, threads, and mergeability; fail the precheck if any review thread remains unresolved. Never bypass protection or force-push.
 
 ## Reconcile and continue
 
