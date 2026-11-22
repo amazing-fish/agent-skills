@@ -25,7 +25,7 @@ class HumanReportPolicyTests(unittest.TestCase):
         self.assertIn('while CI or review is pending', workflow)
         self.assertIn('`report-for-human`', workflow)
         self.assertNotIn('`explain-diff-for-human-review`', workflow)
-        self.assertLess(workflow.index('After creating each new PR'), workflow.index('## Check Codex Review'))
+        self.assertLess(workflow.index('After creating each new PR'), workflow.index('## Check AI Review'))
 
     def test_pr_review_and_merge_authority_survive_rename(self):
         review = (SKILL / 'references/pr-review.md').read_text()

@@ -272,11 +272,11 @@ class SkillPolicyTests(unittest.TestCase):
         }
 
         expected_branch_policies = {
-            "Passed": ("current Codex-bot 👍", "no actionable feedback"),
-            "In progress": ("do not mention the bot again",),
+            "Passed": ("configured AI reviewer checks (such as CodeRabbit)", "no actionable feedback"),
+            "In progress": ("do not nag or re-trigger the reviewer",),
             "Not triggered": (
-                "post `@codex review` once",
-                "return the comment URL",
+                "trigger only an explicitly configured active AI reviewer once",
+                "return the comment or check URL",
             ),
             "Findings or failures": (
                 "fix in scope issues on the same branch",
@@ -326,10 +326,14 @@ class SkillPolicyTests(unittest.TestCase):
             with self.subTest(required_summary=required_summary):
                 self.assertIn(required_summary, timer_summary)
 
-    def test_workflow_requires_executor_identity_and_multi_reviewer_coverage(self):
+    def test_workflow_excludes_codex_and_requires_executor_and_ai_review(self):
         workflow = (
             ROOT / "skills" / "execute-github-issue-pr-workflow" / "SKILL.md"
         ).read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        workflow_readme_section = readme.split("### execute-github-issue-pr-workflow", 1)[1].split("### ", 1)[0]
+        self.assertNotIn("codex", workflow.lower())
+        self.assertNotIn("codex", workflow_readme_section.lower())
         for required_policy in (
             "执行者",
             "neon",
