@@ -68,7 +68,7 @@ skills/
 - 定义：[skills/execute-github-issue-pr-workflow/SKILL.md](skills/execute-github-issue-pr-workflow/SKILL.md)
 - 默认模式：人工批准当前 PR 合入并进入下一 Issue
 - 自动暂存模式：低风险 PR 保持未合并并继续推进，最终由人类统一决定方向
-- 评审节拍：依次等待 6+4+2+8 分钟，累计第 6、10、12、20 分钟检查（覆盖 CodeRabbit 等已配置 AI reviewer 检查/线程与必需 CI）；每次只设一个一次性定时器，触发后刷新一次，完成即停止，第 20 分钟仍未完成则记录 pending。跨会话保留阶段和截止时间，并报告目标本地时间、目标时区和已核验 next run。完整规则以 [workflow Skill](skills/execute-github-issue-pr-workflow/SKILL.md) 为事实来源
+- 评审节拍：依次等待 6+4+2+8 分钟，累计第 6、10、12、20 分钟检查（覆盖 CodeRabbit 等已配置 AI reviewer 检查与未解决线程；不依赖远端 GitHub Actions CI，测试与校验在本地执行）；每次只设一个一次性定时器，触发后刷新一次，完成即停止，第 20 分钟仍未完成则记录 pending。跨会话保留阶段和截止时间，并报告目标本地时间、目标时区和已核验 next run。完整规则以 [workflow Skill](skills/execute-github-issue-pr-workflow/SKILL.md) 为事实来源
 
 ### douyin-video-analysis
 
@@ -86,7 +86,7 @@ skills/
 2. 本地修改必须通过 Issue 说明动机、验收标准和兼容性影响。
 3. 修改过的外部文件应在 PR 中明确标注变更，不覆盖来源记录。
 4. 合入前检查 frontmatter、链接、敏感信息和生成物。
-5. PR 合入前必须通过 GitHub Actions CI 强制执行的仓库策略测试（`python -m unittest discover -s tests`）。
+5. PR 合入前必须在本地通过仓库策略测试（`python -m unittest discover -s tests`）与 `git diff --check`，不依赖远端 GitHub Actions CI。
 
 ## License
 

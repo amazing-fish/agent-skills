@@ -22,7 +22,7 @@ class HumanReportPolicyTests(unittest.TestCase):
         workflow = (ROOT / 'skills/execute-github-issue-pr-workflow/SKILL.md').read_text()
         self.assertIn('After creating each new PR', workflow)
         self.assertIn('immediately deliver a concise visual HTML report', workflow)
-        self.assertIn('while CI or review is pending', workflow)
+        self.assertIn('while review is pending', workflow)
         self.assertIn('`report-for-human`', workflow)
         self.assertNotIn('`explain-diff-for-human-review`', workflow)
         self.assertLess(workflow.index('After creating each new PR'), workflow.index('## Check AI Review'))
