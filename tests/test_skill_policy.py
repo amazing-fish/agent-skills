@@ -345,6 +345,17 @@ class SkillPolicyTests(unittest.TestCase):
             with self.subTest(required_policy=required_policy):
                 self.assertIn(required_policy, workflow)
 
+    def test_workflow_drops_remote_github_actions_ci_and_verifies_locally(self):
+        self.assertFalse((ROOT / ".github" / "workflows" / "tests.yml").exists())
+        workflow = (
+            ROOT / "skills" / "execute-github-issue-pr-workflow" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("does not rely on or require remote GitHub Actions CI", workflow)
+        self.assertNotIn("required CI checks", workflow)
+        self.assertIn("不依赖远端 GitHub Actions CI", readme)
+        self.assertNotIn("GitHub Actions CI 强制执行", readme)
+
     def test_github_diff_policy_is_links_only(self):
         skill = (
             ROOT / "skills" / "report-for-human" / "SKILL.md"

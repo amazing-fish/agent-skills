@@ -1,6 +1,6 @@
 ---
 name: execute-github-issue-pr-workflow
-description: Execute a lightweight governed GitHub Issue-to-PR delivery loop with an optional independent goal-prompt preflight, executor identity tracking, focused implementation, clickable commit and PR links, staged 6+4+2+8-minute AI review waits, comment resolution, visual human reports, controlled merge or staging, Issue reconciliation, and documentation updates. Use when repeatedly advancing repository Issues, shepherding PRs, handling CodeRabbit and CI feedback, or following the user's established GitHub workflow.
+description: Execute a lightweight governed GitHub Issue-to-PR delivery loop with an optional independent goal-prompt preflight, executor identity tracking, focused implementation, clickable commit and PR links, staged 6+4+2+8-minute AI review waits, comment resolution, visual human reports, controlled merge or staging, Issue reconciliation, and documentation updates. Use when repeatedly advancing repository Issues, shepherding PRs, handling CodeRabbit and local verification feedback, or following the user's established GitHub workflow.
 ---
 
 # Execute GitHub Issue–PR Workflow
@@ -49,16 +49,16 @@ The optimizer's rewrite-only and separate-follow-up boundaries govern the standa
 ## Implement and publish
 
 1. Branch from the current base and implement only the Issue acceptance criteria.
-2. Add focused tests and update affected docs. Run the relevant tests, lint, and type checks; record commands, results, and any unavailable checks.
+2. Add focused tests and update affected docs. Run the relevant tests, lint, and type/diff checks locally (this workflow does not rely on or require remote GitHub Actions CI); record exact commands, results, and any unavailable checks.
 3. Commit and push focused changes. Immediately return a full clickable URL for every pushed commit: `https://github.com/<owner>/<repo>/commit/<sha>`.
 4. Open or update a concise PR with the linked Issue, purpose, changes, exclusions, risks, validation, and screenshots when useful.
 5. Immediately return the full clickable PR URL after creation or material update.
 
-After creating each new PR, use the installed `report-for-human` skill to immediately deliver a concise visual HTML report. Show current changes, evidence and limitations even while CI or review is pending; refresh the same report after material state changes. This report does not expand implementation or merge authority.
+After creating each new PR, use the installed `report-for-human` skill to immediately deliver a concise visual HTML report. Show current changes, evidence and limitations even while review is pending; refresh the same report after material state changes. This report does not expand implementation or merge authority.
 
 ## Check AI Review efficiently
 
-Repositories use configured AI reviewers such as **CodeRabbit** alongside required CI checks. Track configured AI reviewer checks, comments, and unresolved inline threads together with CI status across the same wait cadence.
+Repositories use configured AI reviewers such as **CodeRabbit** alongside local verification (tests, lint, type/diff checks executed locally) without relying on or requiring remote GitHub Actions CI. Track configured AI reviewer checks, comments, and unresolved inline threads together with PR status checks across the same wait cadence.
 
 ### Schedule the review timer safely
 
@@ -74,12 +74,12 @@ Treat each deadline in the 6+4+2+8-minute sequence as an absolute instant, not a
 For each new ready-for-review PR HEAD:
 
 1. Use the wait sequence **6 minutes → 4 minutes → 2 minutes → 8 minutes** for each HEAD: check at cumulative minutes **6, 10, 12 and 20** from the cycle start. Record PR URL, HEAD, cycle start, completed wait stage, next deadline and configured AI reviewer trigger/check state. Set only the next one-shot timer under the contract above; do not poll while it is active. On a later turn, resume the saved stage and deadline rather than restarting or duplicating the sequence.
-2. At each deadline, refresh once: HEAD, configured AI reviewer checks/comments (such as CodeRabbit), review decisions, conversation and inline comments, unresolved threads, CI checks, and mergeability. If HEAD changed, clean up the old timer and begin the 6-minute first stage for the new HEAD. After a delayed resumption, refresh once, skip elapsed deadlines and schedule only the next future stage; do not issue catch-up polls.
+2. At each deadline, refresh once: HEAD, configured AI reviewer checks/comments (such as CodeRabbit), review decisions, conversation and inline comments, unresolved threads, status checks, and mergeability. If HEAD changed, clean up the old timer and begin the 6-minute first stage for the new HEAD. After a delayed resumption, refresh once, skip elapsed deadlines and schedule only the next future stage; do not issue catch-up polls.
 3. Classify that refresh:
-   - **Passed:** stop waiting. Continue only if there is evidence that configured AI reviewer checks (such as CodeRabbit) actually completed a review of the current HEAD (not merely a green status check—treat skipped, failed, or rate-limited reviews as pending or blocked), required CI checks succeeded, no actionable feedback remains, and no unresolved thread from any reviewer remains; document any explicit check waiver.
-   - **In progress:** do not nag or re-trigger the reviewer while an AI reviewer check (such as CodeRabbit) or CI check is still pending; advance to the next wait stage if one remains.
+   - **Passed:** stop waiting. Continue only if there is evidence that configured AI reviewer checks (such as CodeRabbit) actually completed a review of the current HEAD (not merely a green status check—treat skipped, failed, or rate-limited reviews as pending or blocked), local verification (tests, lint, type/diff checks) succeeded, no actionable feedback remains, and no unresolved thread from any reviewer remains; document any explicit check waiver.
+   - **In progress:** do not nag or re-trigger the reviewer while an AI reviewer check (such as CodeRabbit) is still pending; advance to the next wait stage if one remains.
    - **Not triggered:** trigger only an explicitly configured active AI reviewer once if needed and return the comment or check URL. Preserve the current sequence; do not repeat an already posted trigger or reset the waits after a turn boundary.
-   - **Findings or failures:** fix in scope issues on the same branch (from CodeRabbit, other configured AI reviewers, human reviewers, or failed checks), test, push, and return the new commit URL. Start a fresh sequence for the new HEAD.
+   - **Findings or failures:** fix in scope issues on the same branch (from CodeRabbit, other configured AI reviewers, human reviewers, or failed local/status checks), test, push, and return the new commit URL. Start a fresh sequence for the new HEAD.
 4. After a pending classification, schedule only the next future stage under the timer contract if one remains. Never infer success from elapsed time, silence or acknowledgement. If the final 20-minute check is still pending, stop automatic waiting for that HEAD and checkpoint the exhausted sequence; do not loop or silently restart it.
 5. If waiting cannot continue earlier, preserve the current stage. Report `AI review pending`, PR URL, HEAD, reviewer state, completed stage and next refresh time, or explicitly state that the sequence is exhausted and a later refresh is needed.
 
@@ -95,7 +95,7 @@ Never merge a PR in the same assistant turn that created it. A timer or auto-mer
 
 Require all of the following:
 
-- acceptance criteria and all relevant checks pass or have an explicit documented waiver;
+- acceptance criteria and local verification (tests, lint, type/diff checks) plus all relevant checks pass or have an explicit documented waiver;
 - configured AI reviewer checks (e.g., CodeRabbit) show completed review evidence for the current HEAD (treating skipped, failed, or rate-limited reviews as blocked) with no pending or failing status;
 - no blocking review decision, unresolved feedback (from CodeRabbit, other configured reviewers, or human reviewers), unresolved review thread, conflict, or scope decision remains;
 - validation and docs match the current code;
