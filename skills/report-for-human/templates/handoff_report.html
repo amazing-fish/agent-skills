@@ -1167,7 +1167,9 @@
       var state = {
         filterStatus: 'all',
         searchQuery: '',
-        promptMode: (DATA.prompt && DATA.prompt.default_mode) || ((DATA.prompt && DATA.prompt.modes && DATA.prompt.modes[0] && DATA.prompt.modes[0].id) || 'default'),
+        promptMode: (DATA.prompt && DATA.prompt.default_mode != null)
+          ? String(DATA.prompt.default_mode)
+          : ((DATA.prompt && DATA.prompt.modes && DATA.prompt.modes[0] && DATA.prompt.modes[0].id != null) ? String(DATA.prompt.modes[0].id) : 'default'),
         selectedModules: new Set()
       };
 
@@ -1295,6 +1297,7 @@
           var text = (card.getAttribute('data-search-text') || '').toLowerCase();
           var statusOk = state.filterStatus === 'all' ||
             st === state.filterStatus ||
+            (state.filterStatus === 'blocked' && st === 'deferred') ||
             (state.filterStatus === 'conflict_resolved' && hasConflict);
           var searchOk = !q || text.indexOf(q) !== -1;
           if (statusOk && searchOk) {
@@ -1343,7 +1346,7 @@
         var meta = DATA.meta || {};
         var promptCfg = DATA.prompt || {};
         var modes = promptCfg.modes || [];
-        var activeMode = modes.find(function (m) { return m.id === state.promptMode; }) || modes[0] || { label: '完整交接执行', instructions: '' };
+        var activeMode = modes.find(function (m) { return String(m.id) === String(state.promptMode); }) || modes[0] || { label: '完整交接执行', instructions: '' };
         var modules = (promptCfg.modules || []).filter(function (m) { return state.selectedModules.has(String(m.id)); });
         var constraint = promptCfg.zero_artifact_constraint || '零图片/零文件回传约束：严禁回传截图、图片、压缩包或任何本地附件文件，仅输出结构化纯文本/Markdown 执行回执、关键命令退出码摘要与可验证链接。';
 
@@ -1381,7 +1384,7 @@
 
       function syncPromptAndCounter() {
         document.querySelectorAll('.prompt-mode-btn').forEach(function (btn) {
-          btn.setAttribute('aria-pressed', btn.getAttribute('data-prompt-mode') === state.promptMode ? 'true' : 'false');
+          btn.setAttribute('aria-pressed', btn.getAttribute('data-prompt-mode') === String(state.promptMode) ? 'true' : 'false');
         });
         document.querySelectorAll('.prompt-module-cb').forEach(function (cb) {
           cb.checked = state.selectedModules.has(cb.getAttribute('data-module-id'));

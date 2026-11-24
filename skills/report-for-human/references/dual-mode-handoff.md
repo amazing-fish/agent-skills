@@ -46,7 +46,7 @@
 | `kpis` | array(长度=4) | 是 | 每项含 `label`、`value`、`subtext`、可选 `tone` / `mono` / `url` |
 | `prs` | array | 是 | Mode A 含 `default_checked`、`depends_on`、`status`(`ready\|approved\|warning\|blocked`)；Mode B 含 `status`(`merged\|conflict_resolved\|blocked\|deferred`)、`merge_commit_sha`、`merge_commit_url`、`conflict_note` |
 | `conflicts` | object | Mode B 必填 | `has_conflicts` 与 `summary`（无冲突亦需显式声明） |
-| `gates` | array | 可选 | 前置门禁开关/审计项（`id`、`title`、`description`、`url`、`authorized`） |
+| `gates` | array | 可选 | 前置门禁开关/审计项（`id`、`title`、`description`、`url`、`authorized`，兼容 `default_enabled` 回退；Mode A 与 Mode B 均按 `authorized` 优先） |
 | `criteria` | array | 是 | 每条强制包含 `target_and_status`、`ruling`、`unlock_and_blockers` 三要素 |
 | `prompt` | object | 是 | `target_machine`、`default_mode`、`preamble`、`zero_artifact_constraint`、`modes`、`modules` |
 

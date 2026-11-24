@@ -226,7 +226,9 @@ def render_svg_topology(meta: Dict[str, Any], prs: List[Dict[str, Any]]) -> str:
             short_title = short_title[:17] + "…"
         st_badge = pr.get("status_label") or st
         nodes_svg.append(
-            f'<g class="dag-node {checked_cls}" data-svg-pr-id="{esc(pid)}" transform="translate({x:.1f}, {y:.1f})">'
+            f'<g class="dag-node {checked_cls}" data-svg-pr-id="{esc(pid)}" '
+            f'tabindex="0" role="button" aria-label="定位 PR #{esc(pr.get("number"))}: {esc(pr.get("title", ""))}" '
+            f'transform="translate({x:.1f}, {y:.1f})">'
             f'  <title>点击定位 PR #{esc(pr.get("number"))}: {esc(pr.get("title", ""))}</title>'
             f'  <rect width="{node_w}" height="{node_h}" rx="10" fill="{fill}" stroke="var(--border-strong)" stroke-width="1.6" />'
             f'  <text x="12" y="24" font-size="12.5" font-weight="800" font-family="var(--font-mono)" fill="var(--accent)">#{esc(pr.get("number"))}</text>'
@@ -328,13 +330,19 @@ def render_approval_prs(prs: List[Dict[str, Any]]) -> str:
     return "\n".join(cards)
 
 
+def _is_gate_enabled(g: Dict[str, Any]) -> bool:
+    if "authorized" in g:
+        return bool(g["authorized"])
+    return bool(g.get("default_enabled", False))
+
+
 def render_approval_gates(gates: List[Dict[str, Any]]) -> str:
     if not gates:
         return ""
     items: List[str] = []
     for g in gates:
         gid = str(g["id"])
-        enabled = bool(g.get("default_enabled", False))
+        enabled = _is_gate_enabled(g)
         checked_attr = " checked" if enabled else ""
         auth_cls = " is-authorized" if enabled else ""
         status_txt = "已授权" if enabled else "未授权"
@@ -368,10 +376,10 @@ def validate_criterion_fields(c: Dict[str, Any]) -> None:
         ("ruling", "具体口径与作用"),
         ("unlock_and_blockers", "解锁效果与残余卡点"),
     ):
-        val = str(c.get(key, "")).strip()
-        if len(val) < 4:
+        raw = c.get(key)
+        if not isinstance(raw, str) or len(raw.strip()) < 4:
             raise ValueError(
-                f"判据 `{c.get('code', c.get('id'))}` 的必填项 `{key}`（{label}）不能为空或过短，禁止只写编号不写口径与卡点"
+                f"判据 `{c.get('code', c.get('id'))}` 的必填项 `{key}`（{label}）必须是非空字符串（至少 4 个字符），禁止 null 或只写编号不写口径与卡点"
             )
 
 
@@ -558,10 +566,11 @@ def render_handoff_criteria(criteria: List[Dict[str, Any]]) -> str:
 
 def render_prompt_controls(prompt_cfg: Dict[str, Any]) -> Tuple[str, str]:
     modes = prompt_cfg.get("modes") or []
-    default_mode = prompt_cfg.get("default_mode") or (modes[0]["id"] if modes else "default")
+    raw_default = prompt_cfg.get("default_mode")
+    default_mode = str(raw_default) if raw_default is not None else (str(modes[0]["id"]) if modes else "default")
     modes_html = "".join(
         f'<button type="button" class="prompt-mode-btn" data-prompt-mode="{esc(m["id"])}" '
-        f'aria-pressed="{"true" if m["id"] == default_mode else "false"}">{esc(m["label"])}</button>'
+        f'aria-pressed="{"true" if str(m["id"]) == default_mode else "false"}">{esc(m["label"])}</button>'
         for m in modes
     )
     modules = prompt_cfg.get("modules") or []
@@ -595,7 +604,7 @@ def build_initial_receipt(data: Dict[str, Any]) -> str:
     if gates:
         lines.append("一、前置门禁授权：")
         for g in gates:
-            st = "已授权" if g.get("default_enabled") else "未授权"
+            st = "已授权" if _is_gate_enabled(g) else "未授权"
             lines.append(f'- [{st}] {g["title"]}（{g["id"]}）')
         lines.append("")
     lines.append(f"二、批准合入的 PR（{len(approved)}/{len(prs)}）：")
@@ -628,8 +637,9 @@ def build_initial_prompt(data: Dict[str, Any], mode: str) -> str:
     meta = data.get("meta") or {}
     prompt_cfg = data.get("prompt") or {}
     modes = prompt_cfg.get("modes") or []
-    default_mode_id = prompt_cfg.get("default_mode") or (modes[0]["id"] if modes else "default")
-    active_mode = next((m for m in modes if m["id"] == default_mode_id), {"label": "标准执行", "instructions": ""})
+    raw_default = prompt_cfg.get("default_mode")
+    default_mode_id = str(raw_default) if raw_default is not None else (str(modes[0]["id"]) if modes else "default")
+    active_mode = next((m for m in modes if str(m["id"]) == default_mode_id), {"label": "标准执行", "instructions": ""})
     modules = [m for m in (prompt_cfg.get("modules") or []) if m.get("default_checked", True)]
     constraint = prompt_cfg.get("zero_artifact_constraint") or DEFAULT_ZERO_ARTIFACT_CONSTRAINT
 
@@ -720,7 +730,7 @@ def render_report(data: Dict[str, Any], mode: str) -> str:
     if mode == "approval":
         approved_cnt = sum(1 for p in prs if p.get("default_checked"))
         signed_cnt = sum(1 for c in criteria if c.get("default_checked"))
-        gate_cnt = sum(1 for g in gates if g.get("default_enabled"))
+        gate_cnt = sum(1 for g in gates if _is_gate_enabled(g))
         gate_part = f" · 门禁 {gate_cnt}/{len(gates)}" if gates else ""
         initial_receipt = build_initial_receipt(data)
         replacements.update({

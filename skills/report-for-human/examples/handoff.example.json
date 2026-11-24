@@ -195,7 +195,7 @@
         "title": "同步主干至 c4e91f0b 并执行一致性自检",
         "description": "确认本地 main 与云端落盘 SHA 完全一致",
         "default_checked": true,
-        "prompt_text": "执行 git fetch origin && git checkout main && git pull --ff-only origin main，核验 git rev-parse --short HEAD == c4e91f0b，运行快照校验命令并汇报退出码。"
+        "prompt_text": "执行 git fetch origin && git checkout main && git pull --ff-only origin main，核验 [ \"$(git rev-parse HEAD)\" = \"$(git rev-parse c4e91f0b772a318d)\" ]，运行快照校验命令并汇报退出码。"
       },
       {
         "id": "m2",

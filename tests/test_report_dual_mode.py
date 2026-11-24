@@ -88,6 +88,71 @@ class DualModeReportTests(unittest.TestCase):
         self.assertTrue((SKILL / "references" / "dual-mode-handoff.md").is_file())
         self.assertLessEqual(len(skill_md.splitlines()), 100)
 
+    def test_approval_gate_honors_authorized_field(self):
+        data = copy.deepcopy(self._example("approval"))
+        data["gates"] = [{
+            "id": "G-AUTH",
+            "title": "Test Authorized Gate",
+            "description": "Authorized gate should start enabled",
+            "url": "https://github.com/amazing-fish/agent-skills/pull/78",
+            "authorized": True,
+        }]
+        html_out = renderer.render_report(data, "approval")
+        self.assertIn('data-gate-id="G-AUTH" role="switch" checked', html_out)
+        self.assertIn("门禁 1/1", html_out)
+        self.assertIn("- [已授权] Test Authorized Gate（G-AUTH）", html_out)
+
+    def test_criterion_none_raises_value_error(self):
+        data = copy.deepcopy(self._example("approval"))
+        data["criteria"][0]["target_and_status"] = None
+        with self.assertRaises(ValueError):
+            renderer.render_report(data, "approval")
+
+    def test_validator_rejects_protocol_relative_urls_and_allows_domain_mentions_in_prose(self):
+        approval_html = renderer.render_report(self._example("approval"), "approval")
+        for bad_tag in (
+            '<script src="//example.org/report.js"></script>',
+            '<script src=//example.org/report.js></script>',
+            '<style>@import url("//example.org/a.css");</style>',
+        ):
+            with self.subTest(bad_tag=bad_tag):
+                errs, _ = validator.validate_html(approval_html.replace("</head>", bad_tag + "</head>"), expected_mode="approval")
+                self.assertTrue(any("外网" in e or "CSS" in e for e in errs), errs)
+
+        data = copy.deepcopy(self._example("handoff"))
+        data["prs"][0]["summary"] = "Remove unpkg.com dependency and drop cdnjs.cloudflare.com ref"
+        clean_html = renderer.render_report(data, "handoff")
+        errs_clean, warns_clean = validator.validate_html(clean_html, expected_mode="handoff")
+        self.assertEqual(errs_clean, [])
+        self.assertEqual(warns_clean, [])
+
+    def test_validator_checks_mandatory_dimensions_inside_approval_cards_with_void_inputs(self):
+        approval_html = renderer.render_report(self._example("approval"), "approval")
+        broken_html = approval_html.replace("解锁效果与残余卡点", "缺失维度占位")
+        errs, _ = validator.validate_html(broken_html, expected_mode="approval")
+        self.assertTrue(any("缺少必填维度" in e for e in errs), errs)
+
+    def test_approval_template_hardening_and_keyboard_topology(self):
+        approval_html = renderer.render_report(self._example("approval"), "approval")
+        self.assertNotIn("warnEl.innerHTML", approval_html)
+        self.assertIn("document.createTextNode(", approval_html)
+        self.assertNotIn("'.dag-node[data-svg-pr-id=\"'", approval_html)
+        self.assertIn('class="dag-node', approval_html)
+        self.assertIn('tabindex="0" role="button"', approval_html)
+        self.assertIn("e.key === 'Enter' || e.key === ' '", approval_html)
+
+    def test_handoff_template_blocked_filter_includes_deferred_and_stringifies_prompt_modes(self):
+        data = copy.deepcopy(self._example("handoff"))
+        data["prompt"]["modes"] = [
+            {"id": 1, "label": "Mode 1", "instructions": "Run mode 1"},
+            {"id": 2, "label": "Mode 2", "instructions": "Run mode 2"},
+        ]
+        data["prompt"]["default_mode"] = 2
+        handoff_html = renderer.render_report(data, "handoff")
+        self.assertIn("(state.filterStatus === 'blocked' && st === 'deferred')", handoff_html)
+        self.assertIn("String(m.id) === String(state.promptMode)", handoff_html)
+        self.assertIn('data-prompt-mode="2" aria-pressed="true"', handoff_html)
+
 
 if __name__ == "__main__":
     unittest.main()

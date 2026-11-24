@@ -18,14 +18,45 @@ from typing import Dict, List, Optional, Tuple
 
 WATERMARK = "report-for-human@v2.0.0"
 
-EXTERNAL_RESOURCE_PATTERNS = [
-    (re.compile(r"<link[^>]+href\s*=\s*['\"]https?://", re.IGNORECASE), "禁止引入外网 <link> 样式/字体 CDN"),
-    (re.compile(r"<script[^>]+src\s*=\s*['\"]https?://", re.IGNORECASE), "禁止引入外网 <script> CDN"),
-    (re.compile(r"@import\s+url\(\s*['\"]?https?://", re.IGNORECASE), "禁止在 CSS 中 @import 外网资源"),
-    (re.compile(r"cdn\.tailwindcss\.com|fonts\.googleapis\.com|fonts\.gstatic\.com|unpkg\.com|jsdelivr\.net|cdnjs\.cloudflare\.com", re.IGNORECASE), "检测到外网 CDN 域名残留"),
-]
+_VOID_ELEMENTS = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img",
+    "input", "link", "meta", "source", "track", "wbr",
+})
+
+_RESOURCE_ATTRS_BY_TAG: Dict[str, Tuple[str, ...]] = {
+    "link": ("href",),
+    "script": ("src",),
+    "img": ("src", "srcset"),
+    "iframe": ("src",),
+    "source": ("src", "srcset"),
+    "audio": ("src",),
+    "video": ("src", "poster"),
+    "embed": ("src",),
+    "object": ("data",),
+}
+
+_CSS_EXTERNAL_URL_RE = re.compile(
+    r"(?:@import\s+(?:url\(\s*)?|url\(\s*)['\"]?\s*(?:https?:)?//",
+    re.IGNORECASE,
+)
 
 PLACEHOLDER_RE = re.compile(r"\{\{[A-Z0-9_]+\}\}")
+
+
+def _is_external_url(raw_val: str) -> bool:
+    cleaned = (raw_val or "").strip().lower()
+    return cleaned.startswith("http://") or cleaned.startswith("https://") or cleaned.startswith("//")
+
+
+def _extract_external_attr_urls(tag: str, attr_name: str, raw_val: str) -> List[str]:
+    if attr_name == "srcset":
+        candidates = []
+        for entry in (raw_val or "").split(","):
+            token = entry.strip().split(None, 1)[0] if entry.strip() else ""
+            if _is_external_url(token):
+                candidates.append(token)
+        return candidates
+    return [raw_val.strip()] if _is_external_url(raw_val) else []
 
 
 class StructureInspector(HTMLParser):
@@ -50,6 +81,9 @@ class StructureInspector(HTMLParser):
         self.has_zero_artifact_constraint = False
         self.in_footer = False
         self.footer_text_parts: List[str] = []
+        self.in_style = False
+        self.style_parts: List[str] = []
+        self.external_resources: List[str] = []
         self.external_links_missing_attrs: List[str] = []
         self.external_link_count = 0
         self.criteria_card_count = 0
@@ -61,6 +95,17 @@ class StructureInspector(HTMLParser):
         attr_map: Dict[str, str] = {k.lower(): (v or "") for k, v in attrs}
         cls_tokens = set(attr_map.get("class", "").split())
         rfh_role = attr_map.get("data-rfh-role", "")
+
+        for attr_name in _RESOURCE_ATTRS_BY_TAG.get(tag, ()):
+            for ext_url in _extract_external_attr_urls(tag, attr_name, attr_map.get(attr_name, "")):
+                self.external_resources.append(f"<{tag} {attr_name}> 禁止引入外网/协议相对资源: {ext_url}")
+
+        inline_style = attr_map.get("style", "")
+        if inline_style and _CSS_EXTERNAL_URL_RE.search(inline_style):
+            self.external_resources.append("内联 style 属性禁止引用外网资源")
+
+        if tag == "style":
+            self.in_style = True
 
         if tag == "html":
             self.report_mode = attr_map.get("data-report-mode") or None
@@ -117,23 +162,27 @@ class StructureInspector(HTMLParser):
                 if target != "_blank" or "noopener" not in rel_tokens or "noreferrer" not in rel_tokens:
                     self.external_links_missing_attrs.append(href)
 
-        if "criteria-card" in cls_tokens:
+        if "criteria-card" in cls_tokens and tag not in _VOID_ELEMENTS:
             self.criteria_card_count += 1
             self._in_criteria_card_depth = 1
             self._current_criteria_text = []
-        elif self._in_criteria_card_depth > 0:
+        elif self._in_criteria_card_depth > 0 and tag not in _VOID_ELEMENTS:
             self._in_criteria_card_depth += 1
 
     def handle_endtag(self, tag: str) -> None:
+        if tag == "style":
+            self.in_style = False
         if tag == "footer":
             self.in_footer = False
-        if self._in_criteria_card_depth > 0:
+        if self._in_criteria_card_depth > 0 and tag not in _VOID_ELEMENTS:
             self._in_criteria_card_depth -= 1
             if self._in_criteria_card_depth == 0:
                 self.criteria_texts.append(" ".join(self._current_criteria_text))
                 self._current_criteria_text = []
 
     def handle_data(self, data: str) -> None:
+        if self.in_style:
+            self.style_parts.append(data)
         if self.in_footer:
             self.footer_text_parts.append(data)
         if self._in_criteria_card_depth > 0:
@@ -151,14 +200,15 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
     if leftovers:
         errors.append(f"遗留未替换占位符: {', '.join(leftovers)}")
 
-    # 2. Zero external CDN/network resource check
-    for pattern, msg in EXTERNAL_RESOURCE_PATTERNS:
-        if pattern.search(html_text):
-            errors.append(msg)
-
-    # 3. Parse DOM structure
+    # 2. Parse DOM structure (zero external CDN/network resource check included)
     inspector = StructureInspector()
     inspector.feed(html_text)
+    inspector.close()
+
+    errors.extend(inspector.external_resources)
+    style_text = "\n".join(inspector.style_parts)
+    if _CSS_EXTERNAL_URL_RE.search(style_text):
+        errors.append("禁止在 CSS 中引用外网 @import 或 url() 资源")
 
     mode = inspector.report_mode
     if mode not in ("approval", "handoff"):

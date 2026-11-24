@@ -1347,7 +1347,9 @@
         signedCriteria: new Set(),
         enabledGates: new Set(),
         note: '',
-        promptMode: (DATA.prompt && DATA.prompt.default_mode) || ((DATA.prompt && DATA.prompt.modes && DATA.prompt.modes[0] && DATA.prompt.modes[0].id) || 'default'),
+        promptMode: (DATA.prompt && DATA.prompt.default_mode != null)
+          ? String(DATA.prompt.default_mode)
+          : ((DATA.prompt && DATA.prompt.modes && DATA.prompt.modes[0] && DATA.prompt.modes[0].id != null) ? String(DATA.prompt.modes[0].id) : 'default'),
         selectedModules: new Set()
       };
 
@@ -1358,7 +1360,8 @@
         if (c.default_checked) state.signedCriteria.add(String(c.id));
       });
       (DATA.gates || []).forEach(function (g) {
-        if (g.default_enabled) state.enabledGates.add(String(g.id));
+        var enabled = Object.prototype.hasOwnProperty.call(g, 'authorized') ? Boolean(g.authorized) : Boolean(g.default_enabled);
+        if (enabled) state.enabledGates.add(String(g.id));
       });
       ((DATA.prompt && DATA.prompt.modules) || []).forEach(function (m) {
         if (m.default_checked !== false) state.selectedModules.add(String(m.id));
@@ -1542,7 +1545,7 @@
         var meta = DATA.meta || {};
         var promptCfg = DATA.prompt || {};
         var modes = promptCfg.modes || [];
-        var activeMode = modes.find(function (m) { return m.id === state.promptMode; }) || modes[0] || { label: '标准执行', instructions: '' };
+        var activeMode = modes.find(function (m) { return String(m.id) === String(state.promptMode); }) || modes[0] || { label: '标准执行', instructions: '' };
         var modules = (promptCfg.modules || []).filter(function (m) { return state.selectedModules.has(String(m.id)); });
         var constraint = promptCfg.zero_artifact_constraint || '零图片/零文件回传约束：严禁回传截图、图片或二进制附件文件，仅以结构化纯文本/Markdown 汇报执行结果、命令输出摘要与 GitHub 链接。';
 
@@ -1596,7 +1599,11 @@
           });
         });
         if (issues.length > 0) {
-          warnEl.innerHTML = '<strong>堆叠依赖提醒：</strong>' + issues.join('；') + '。请确认是否需同步勾选前置 PR，避免合入顺序冲突。';
+          warnEl.textContent = '';
+          var strongEl = document.createElement('strong');
+          strongEl.textContent = '堆叠依赖提醒：';
+          warnEl.appendChild(strongEl);
+          warnEl.appendChild(document.createTextNode(issues.join('；') + '。请确认是否需同步勾选前置 PR，避免合入顺序冲突。'));
           warnEl.removeAttribute('hidden');
         } else {
           warnEl.setAttribute('hidden', '');
@@ -1609,6 +1616,10 @@
         var prs = DATA.prs || [];
         var criteria = DATA.criteria || [];
         var gates = DATA.gates || [];
+        var dagNodesById = {};
+        document.querySelectorAll('.dag-node[data-svg-pr-id]').forEach(function (node) {
+          dagNodesById[node.getAttribute('data-svg-pr-id')] = node;
+        });
 
         /* Sync PR checkboxes, cards & SVG nodes */
         document.querySelectorAll('.pr-checkbox').forEach(function (cb) {
@@ -1617,7 +1628,7 @@
           cb.checked = checked;
           var card = cb.closest('.pr-card');
           if (card) card.classList.toggle('is-selected', checked);
-          var svgNode = document.querySelector('.dag-node[data-svg-pr-id="' + id + '"]');
+          var svgNode = dagNodesById[id];
           if (svgNode) {
             svgNode.classList.toggle('is-approved', checked);
             svgNode.classList.toggle('is-unapproved', !checked);
@@ -1668,7 +1679,7 @@
 
         /* Sync Tab 3 Prompt */
         document.querySelectorAll('.prompt-mode-btn').forEach(function (btn) {
-          btn.setAttribute('aria-pressed', btn.getAttribute('data-prompt-mode') === state.promptMode ? 'true' : 'false');
+          btn.setAttribute('aria-pressed', btn.getAttribute('data-prompt-mode') === String(state.promptMode) ? 'true' : 'false');
         });
         document.querySelectorAll('.prompt-module-cb').forEach(function (cb) {
           cb.checked = state.selectedModules.has(cb.getAttribute('data-module-id'));
@@ -1704,14 +1715,24 @@
         });
       });
 
+      function focusPrCardFromTopology(node) {
+        var id = node.getAttribute('data-svg-pr-id');
+        var card = document.getElementById('pr-card-' + id);
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.classList.add('is-pulse');
+          setTimeout(function () { card.classList.remove('is-pulse'); }, 1200);
+        }
+      }
+
       document.querySelectorAll('.dag-node[data-svg-pr-id]').forEach(function (node) {
         node.addEventListener('click', function () {
-          var id = node.getAttribute('data-svg-pr-id');
-          var card = document.getElementById('pr-card-' + id);
-          if (card) {
-            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            card.classList.add('is-pulse');
-            setTimeout(function () { card.classList.remove('is-pulse'); }, 1200);
+          focusPrCardFromTopology(node);
+        });
+        node.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            focusPrCardFromTopology(node);
           }
         });
       });
