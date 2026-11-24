@@ -38,8 +38,8 @@
   "kpis": [
     {
       "label": "分层目标模型",
-      "value": "5 纵 + 6 横",
-      "subtext": "操作→原子→任意态能力→用例→Suite + 六大横向引擎",
+      "value": "5 纵 + 5 横",
+      "subtext": "操作→原子→任意态能力→用例→Suite + 五大横向引擎",
       "tone": "accent"
     },
     {

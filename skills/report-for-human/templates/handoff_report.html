@@ -1297,6 +1297,7 @@
           var text = (card.getAttribute('data-search-text') || '').toLowerCase();
           var statusOk = state.filterStatus === 'all' ||
             st === state.filterStatus ||
+            (state.filterStatus === 'merged' && st === 'conflict_resolved') ||
             (state.filterStatus === 'blocked' && st === 'deferred') ||
             (state.filterStatus === 'conflict_resolved' && hasConflict);
           var searchOk = !q || text.indexOf(q) !== -1;

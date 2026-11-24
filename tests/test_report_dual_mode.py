@@ -3,6 +3,9 @@ from html.parser import HTMLParser
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 
 
@@ -161,6 +164,114 @@ class ReportV21Tests(unittest.TestCase):
         briefing_html = renderer.render_report(self._example("briefing"), "briefing")
         self.assertIn('class="arch-node"', briefing_html)
         self.assertIn('tabindex="0" role="button"', briefing_html)
+        self.assertIn('id="tab-btn-2" aria-controls="tab-panel-2" aria-selected="false" tabindex="-1"', briefing_html)
+        self.assertIn('new Map()', briefing_html)
+        self.assertIn("card.focus({ preventScroll: true })", briefing_html)
+        self.assertIn("revealPromptForManualCopy()", briefing_html)
+        self.assertIn('tabindex="-1"', briefing_html)
+
+    def test_regressions_coderabbit_round2_hardening(self):
+        # 1. Hostless URL rejection
+        bad_url = copy.deepcopy(self._example("approval"))
+        bad_url["meta"]["main_head_url"] = "https://"
+        with self.assertRaises(ValueError):
+            renderer.render_report(bad_url, "approval")
+
+        # 2. Merged pill counts and JS filter include conflict_resolved consistently
+        h_data = copy.deepcopy(self._example("handoff"))
+        conflict_count = sum(1 for p in h_data["prs"] if p.get("status") in ("merged", "conflict_resolved"))
+        h_html = renderer.render_report(h_data, "handoff")
+        self.assertIn(f"已合入 ({conflict_count})", h_html)
+        self.assertIn("(state.filterStatus === 'merged' && st === 'conflict_resolved')", h_html)
+
+        # 3. 1 layer + 7 horizontals expands SVG viewBox and frame height cleanly
+        b_data = copy.deepcopy(self._example("briefing"))
+        b_data["architecture"]["layers"] = b_data["architecture"]["layers"][:1]
+        b_data["architecture"]["horizontals"] = [
+            {"id": f"H{i}", "name": f"Engine {i}", "detail": "detail"} for i in range(1, 8)
+        ]
+        b_html = renderer.render_report(b_data, "briefing")
+        self.assertIn("1 层纵向架构 + 7 项横向平台能力（SVG）", b_html)
+        # horizontal_span = 48 + 7*36 + 6*10 = 360; svg_h >= 406 (> 320)
+        self.assertIn('viewBox="0 0 1040 406"', b_html)
+
+        # 4. Deterministic generated_at fallback + literal {{SSR_ARCH_SVG}} preserved + zero_artifact_constraint baseline kept
+        det_data = copy.deepcopy(self._example("briefing"))
+        det_data["meta"].pop("generated_at", None)
+        det_data["prompt"]["preamble"] = "Keep literal {{SSR_ARCH_SVG}} inside prose"
+        det_data["prompt"]["zero_artifact_constraint"] = "自定义补充：仅汇报 SHA"
+        det_html_1 = renderer.render_report(det_data, "briefing")
+        det_html_2 = renderer.render_report(det_data, "briefing")
+        self.assertEqual(det_html_1, det_html_2)
+        self.assertIn("未提供（not supplied）", det_html_1)
+        self.assertIn("Keep literal {{SSR_ARCH_SVG}} inside prose", det_html_1)
+        self.assertIn("零图片/零文件回传约束：严禁", det_html_1)
+        self.assertIn("自定义补充：仅汇报 SHA", det_html_1)
+        errs, warns = validator.validate_html(det_html_1, expected_mode="briefing")
+        self.assertEqual(errs, [])
+        self.assertEqual(warns, [])
+
+        # 5. File-relative URLs rejected & scoped DOM + gap-box checks enforced
+        rel_img = det_html_1.replace("</head>", '<img src="diagram.png"></head>')
+        rel_errs, _ = validator.validate_html(rel_img, expected_mode="briefing")
+        self.assertTrue(any("diagram.png" in e for e in rel_errs), rel_errs)
+
+        # Fake gap card with words only in title and empty body should fail
+        approval_base = renderer.render_report(self._example("briefing"), "briefing")
+        first_blocker = self._example("briefing")["gaps"][0]["blocker"]
+        empty_box_html = approval_base.replace(first_blocker, "")
+        box_errs, _ = validator.validate_html(empty_box_html, expected_mode="briefing")
+        self.assertTrue(any("维度块为空" in e for e in box_errs), box_errs)
+
+        # Moving zero-artifact text outside element fails
+        example_constraint = renderer.normalize_zero_artifact_constraint(
+            self._example("briefing")["prompt"]["zero_artifact_constraint"]
+        )
+        outside_zero = approval_base.replace(
+            f"<span><strong>硬性回传与脱敏约束（已锁定）：</strong>{renderer.esc(example_constraint)}</span>",
+            f"<span>only text</span></div><div class='decoy'>{renderer.esc(example_constraint)}",
+        )
+        zero_errs, _ = validator.validate_html(outside_zero, expected_mode="briefing")
+        self.assertTrue(any("zero-artifact-constraint" in e for e in zero_errs), zero_errs)
+
+        # Scoped check: SVG outside svg-architecture or search input in Tab 3 must fail
+        svg_elsewhere = approval_base.replace(
+            '<div class="panel-section" data-rfh-role="svg-architecture">',
+            '<div class="panel-section">',
+        ).replace(
+            '<svg class="architecture-svg"',
+            '<svg class="decoy-svg"',
+        )
+        errs_svg_scope, _ = validator.validate_html(svg_elsewhere, expected_mode="briefing")
+        self.assertTrue(any("SVG 分层架构图" in e for e in errs_svg_scope), errs_svg_scope)
+
+    def test_cli_guards_same_file_and_validate_before_write(self):
+        script = SKILL / "scripts" / "render_report.py"
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            bad_json = tmp_dir / "bad_briefing.json"
+            data = copy.deepcopy(self._example("briefing"))
+            data["gaps"] = []
+            bad_json.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+            # Same path input/output must fail without overwriting input JSON
+            res_same = subprocess.run(
+                [sys.executable, str(script), "--mode", "briefing", "--input", str(bad_json), "--output", str(bad_json)],
+                capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertNotEqual(res_same.returncode, 0)
+            self.assertIn("覆盖输入", res_same.stderr)
+            self.assertTrue(json.loads(bad_json.read_text(encoding="utf-8"))["mode"] == "briefing")
+
+            # Pre-existing report file must stay untouched when validation fails
+            existing_out = tmp_dir / "report.html"
+            existing_out.write_text("KEEP_EXISTING_REPORT", encoding="utf-8")
+            res_fail = subprocess.run(
+                [sys.executable, str(script), "--mode", "briefing", "--input", str(bad_json), "--output", str(existing_out)],
+                capture_output=True, text=True, encoding="utf-8",
+            )
+            self.assertEqual(res_fail.returncode, 1)
+            self.assertEqual(existing_out.read_text(encoding="utf-8"), "KEEP_EXISTING_REPORT")
 
 
 if __name__ == "__main__":

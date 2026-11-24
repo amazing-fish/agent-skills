@@ -18,7 +18,7 @@
 - `meta`: `project_name`、`main_head_sha`、`main_head_url`（合法 `http(s)://`）、可选 `main_head_short`、`report_title`、`report_subtitle`、`generated_at`
 - `steps`: 长度必须为 `3`，每项含 `actor`、`status`（`done|active|pending`）、`status_label`、`title`、`description`、`dependency`
 - `kpis`: 长度必须为 `4`，每项含 `label`、`value`、`subtext`，可选 `tone`（`default|accent|success|warning|danger`）、`mono`、`url`
-- `prompt`: `target_machine`、`default_mode`、`preamble`、`zero_artifact_constraint`、`modes[]`（`id` 字符串比较）、`modules[]`
+- `prompt`: `target_machine`、`default_mode`、`preamble`、`zero_artifact_constraint`、`modes[]`（`id` 字符串比较）、`modules[]`。其中 `zero_artifact_constraint` 强制保留并延续基线零图片/零文件回传禁止约束：若自定义覆盖文本遗漏零图片/零文件禁止条款，渲染与拷贝 Prompt 时会自动将基线禁止前缀置于补充说明之前。
 
 ## 3. 模式专属字段
 

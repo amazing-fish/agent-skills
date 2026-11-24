@@ -10,12 +10,14 @@ then runs validate_report.py automatically before exiting.
 from __future__ import annotations
 
 import argparse
+import copy
 import html
 import json
+import re
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+from urllib.parse import urlsplit
 
 try:
     from validate_report import validate_html
@@ -35,6 +37,18 @@ DEFAULT_ZERO_ARTIFACT_CONSTRAINT = (
 )
 
 
+def normalize_zero_artifact_constraint(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return DEFAULT_ZERO_ARTIFACT_CONSTRAINT
+    has_scope = "零图片" in text or "零文件" in text
+    has_prohibition = any(tok in text for tok in ("严禁", "禁止", "不得"))
+    has_artifact_noun = any(tok in text for tok in ("截图", "图片", "附件", "文件", "UI 树"))
+    if has_scope and has_prohibition and has_artifact_noun:
+        return text
+    return f"{DEFAULT_ZERO_ARTIFACT_CONSTRAINT} 补充约束：{text}"
+
+
 def esc(value: Any) -> str:
     return html.escape("" if value is None else str(value), quote=True)
 
@@ -52,8 +66,9 @@ def safe_json_for_script(obj: Any) -> str:
 
 def validate_url(url: str, field_name: str) -> str:
     cleaned = (url or "").strip()
-    if not (cleaned.startswith("https://") or cleaned.startswith("http://")):
-        raise ValueError(f"字段 `{field_name}` 必须是真实可直达的 http(s) URL，当前值: {url!r}")
+    parsed = urlsplit(cleaned)
+    if parsed.scheme.lower() not in ("http", "https") or not parsed.hostname:
+        raise ValueError(f"字段 `{field_name}` 必须是真实可直达的 http(s) URL（包含有效主机名），当前值: {url!r}")
     return cleaned
 
 
@@ -442,7 +457,7 @@ def render_handoff_conflict_banner(conflicts: Dict[str, Any]) -> str:
 def render_handoff_filter_pills(prs: List[Dict[str, Any]]) -> str:
     counts = {
         "all": len(prs),
-        "merged": sum(1 for p in prs if p.get("status") == "merged"),
+        "merged": sum(1 for p in prs if p.get("status") in ("merged", "conflict_resolved")),
         "conflict_resolved": sum(1 for p in prs if p.get("status") == "conflict_resolved" or p.get("conflict_note")),
         "blocked": sum(1 for p in prs if p.get("status") in ("blocked", "deferred")),
     }
@@ -641,7 +656,7 @@ def build_initial_prompt(data: Dict[str, Any], mode: str) -> str:
     default_mode_id = str(raw_default) if raw_default is not None else (str(modes[0]["id"]) if modes else "default")
     active_mode = next((m for m in modes if str(m["id"]) == default_mode_id), {"label": "标准执行", "instructions": ""})
     modules = [m for m in (prompt_cfg.get("modules") or []) if m.get("default_checked", True)]
-    constraint = prompt_cfg.get("zero_artifact_constraint") or DEFAULT_ZERO_ARTIFACT_CONSTRAINT
+    constraint = normalize_zero_artifact_constraint(prompt_cfg.get("zero_artifact_constraint"))
 
     lines = [
         f'# 下一环启动指令（{prompt_cfg.get("target_machine", "内网工作机")}）',
@@ -686,7 +701,13 @@ def render_briefing_arch_svg(arch: Dict[str, Any]) -> str:
     layer_h = 64
     layer_gap = 18
     total_layers_h = len(layers) * layer_h + max(0, len(layers) - 1) * layer_gap
-    svg_h = max(320, pad_y * 2 + total_layers_h + 24)
+    h_top = pad_y + 22
+    h_gap = 10
+    h_count = len(horizontals)
+    h_avail = total_layers_h - 24
+    h_box_h = max(36, (h_avail - max(0, h_count - 1) * h_gap) / max(1, h_count))
+    horizontal_span = (h_top + h_count * h_box_h + max(0, h_count - 1) * h_gap) if h_count else 0
+    svg_h = max(320, pad_y * 2 + total_layers_h + 24, int(horizontal_span + pad_y + 20))
 
     status_fill = {
         "ready": "var(--success-soft)",
@@ -737,17 +758,14 @@ def render_briefing_arch_svg(arch: Dict[str, Any]) -> str:
             )
 
     if horizontals:
+        frame_h = max(total_layers_h, horizontal_span - pad_y) + 20
         parts.append(
-            f'  <rect x="{right_x - 10}" y="{pad_y - 10}" width="{right_w + 20}" height="{total_layers_h + 20}" rx="12" '
+            f'  <rect x="{right_x - 10}" y="{pad_y - 10}" width="{right_w + 20}" height="{frame_h:.1f}" rx="12" '
             f'fill="var(--info-soft)" stroke="var(--info-border)" stroke-width="1.4" stroke-dasharray="5 4" />'
         )
         parts.append(
             f'  <text x="{right_x + 4}" y="{pad_y + 10}" font-size="11.5" font-weight="800" fill="var(--info)">横向平台能力与基础设施</text>'
         )
-        h_top = pad_y + 22
-        h_avail = total_layers_h - 24
-        h_gap = 10
-        h_box_h = max(36, (h_avail - max(0, len(horizontals) - 1) * h_gap) / max(1, len(horizontals)))
         for h_idx, h_item in enumerate(horizontals):
             hy = h_top + h_idx * (h_box_h + h_gap)
             parts.append(
@@ -774,7 +792,7 @@ def render_briefing_gaps(gaps: List[Dict[str, Any]]) -> str:
         st_lbl = g.get("status_label") or sev
         badge_cls = {"ok": "badge-success", "medium": "badge-warning", "high": "badge-danger"}.get(sev, "badge-accent")
         cards.append(
-            f'<article class="gap-card" data-gap-id="{esc(gid)}" data-severity="{esc(sev)}">'
+            f'<article class="gap-card" data-gap-id="{esc(gid)}" data-severity="{esc(sev)}" tabindex="-1">'
             f'  <div class="gap-header">'
             f'    <div><span class="gap-code">{esc(g.get("code", gid))}</span><span class="gap-title">{esc(g.get("title", ""))}</span></div>'
             f'    <span class="badge {badge_cls}">{esc(st_lbl)}</span>'
@@ -879,7 +897,7 @@ def build_initial_briefing_prompt(data: Dict[str, Any]) -> str:
     default_mode_id = str(raw_default) if raw_default is not None else (str(modes[0]["id"]) if modes else "default")
     active_mode = next((m for m in modes if str(m["id"]) == default_mode_id), {"label": "架构评审摘要", "instructions": ""})
     modules = [m for m in (prompt_cfg.get("modules") or []) if m.get("default_checked", True)]
-    constraint = prompt_cfg.get("zero_artifact_constraint") or DEFAULT_ZERO_ARTIFACT_CONSTRAINT
+    constraint = normalize_zero_artifact_constraint(prompt_cfg.get("zero_artifact_constraint"))
 
     lines = [
         f'# 架构与演进执行摘要（{prompt_cfg.get("target_machine", "研发协同")}）',
@@ -907,7 +925,8 @@ def build_initial_briefing_prompt(data: Dict[str, Any]) -> str:
 
 
 def render_report(data: Dict[str, Any], mode: str) -> str:
-    meta = data.get("meta") or {}
+    render_data = copy.deepcopy(data)
+    meta = render_data.get("meta") or {}
     project_name = meta.get("project_name")
     if not project_name:
         raise ValueError("`meta.project_name` 不能为空")
@@ -918,7 +937,7 @@ def render_report(data: Dict[str, Any], mode: str) -> str:
     main_head_short = meta.get("main_head_short") or str(main_head_sha)[:8]
     meta["main_head_short"] = main_head_short
 
-    generated_at = meta.get("generated_at") or datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    generated_at = str(meta.get("generated_at") or "").strip() or "未提供（not supplied）"
     default_titles = {
         "approval": f"{project_name} · PR 审批与判据签字汇报",
         "handoff": f"{project_name} · 合入落盘与跨机交接汇报",
@@ -928,18 +947,18 @@ def render_report(data: Dict[str, Any], mode: str) -> str:
     report_subtitle = meta.get("report_subtitle") or ""
     page_title = f"{report_title} | report-for-human@v2.1.0"
 
-    prompt_cfg = data.get("prompt") or {}
-    zero_constraint = prompt_cfg.get("zero_artifact_constraint") or DEFAULT_ZERO_ARTIFACT_CONSTRAINT
+    prompt_cfg = render_data.get("prompt") or {}
+    zero_constraint = normalize_zero_artifact_constraint(prompt_cfg.get("zero_artifact_constraint"))
     prompt_cfg["zero_artifact_constraint"] = zero_constraint
-    data["prompt"] = prompt_cfg
+    render_data["prompt"] = prompt_cfg
 
-    prs = data.get("prs") or []
-    criteria = data.get("criteria") or []
-    gates = data.get("gates") or []
-    steps_html = render_steps(data.get("steps") or [])
-    kpi_html = render_kpis(data.get("kpis") or [])
+    prs = render_data.get("prs") or []
+    criteria = render_data.get("criteria") or []
+    gates = render_data.get("gates") or []
+    steps_html = render_steps(render_data.get("steps") or [])
+    kpi_html = render_kpis(render_data.get("kpis") or [])
     prompt_modes_html, prompt_modules_html = render_prompt_controls(prompt_cfg)
-    initial_prompt = build_initial_briefing_prompt(data) if mode == "briefing" else build_initial_prompt(data, mode)
+    initial_prompt = build_initial_briefing_prompt(render_data) if mode == "briefing" else build_initial_prompt(render_data, mode)
 
     template_name = {
         "approval": "approval_report.html",
@@ -964,7 +983,7 @@ def render_report(data: Dict[str, Any], mode: str) -> str:
         "{{ZERO_ARTIFACT_CONSTRAINT}}": esc(zero_constraint),
         "{{INITIAL_PROMPT_CHARS}}": str(len(initial_prompt)),
         "{{SSR_PROMPT_INITIAL}}": esc(initial_prompt),
-        "{{REPORT_DATA_JSON}}": safe_json_for_script(data),
+        "{{REPORT_DATA_JSON}}": safe_json_for_script(render_data),
     }
 
     if mode == "approval":
@@ -972,7 +991,7 @@ def render_report(data: Dict[str, Any], mode: str) -> str:
         signed_cnt = sum(1 for c in criteria if c.get("default_checked"))
         gate_cnt = sum(1 for g in gates if _is_gate_enabled(g))
         gate_part = f" · 门禁 {gate_cnt}/{len(gates)}" if gates else ""
-        initial_receipt = build_initial_receipt(data)
+        initial_receipt = build_initial_receipt(render_data)
         replacements.update({
             "{{TAB1_COUNT}}": str(len(prs)),
             "{{TAB2_COUNT}}": str(len(criteria)),
@@ -996,17 +1015,24 @@ def render_report(data: Dict[str, Any], mode: str) -> str:
             "{{TAB2_COUNT}}": str(len(criteria)),
             "{{TAB3_COUNT}}": str(total_mods),
             "{{INITIAL_COUNTER_TEXT}}": esc(f"已合入 {merged_cnt}/{len(prs)} · 模块 {mod_cnt}/{total_mods} · {len(initial_prompt)} 字符"),
-            "{{SSR_CONFLICT_BANNER_HTML}}": render_handoff_conflict_banner(data.get("conflicts") or {}),
+            "{{SSR_CONFLICT_BANNER_HTML}}": render_handoff_conflict_banner(render_data.get("conflicts") or {}),
             "{{SSR_FILTER_PILLS_HTML}}": render_handoff_filter_pills(prs),
             "{{SSR_PR_LIST_HTML}}": render_handoff_prs(prs),
             "{{SSR_GATES_AUDIT_HTML}}": render_handoff_gates_audit(gates),
             "{{SSR_CRITERIA_HTML}}": render_handoff_criteria(criteria),
         })
     else:
-        gaps = data.get("gaps") or []
-        inventory = data.get("inventory") or []
-        platform_caps = data.get("platform_capabilities") or []
-        roadmap = data.get("roadmap") or []
+        arch = render_data.get("architecture") or {}
+        layers = arch.get("layers") or []
+        horizontals = arch.get("horizontals") or []
+        arch_title = (
+            f"{len(layers)} 层纵向架构 + {len(horizontals)} 项横向平台能力（SVG）"
+            if horizontals else f"{len(layers)} 层纵向架构（SVG）"
+        )
+        gaps = render_data.get("gaps") or []
+        inventory = render_data.get("inventory") or []
+        platform_caps = render_data.get("platform_capabilities") or []
+        roadmap = render_data.get("roadmap") or []
         mod_cnt = sum(1 for m in (prompt_cfg.get("modules") or []) if m.get("default_checked", True))
         total_mods = len(prompt_cfg.get("modules") or [])
         replacements.update({
@@ -1014,19 +1040,17 @@ def render_report(data: Dict[str, Any], mode: str) -> str:
             "{{TAB2_COUNT}}": str(len(inventory)),
             "{{TAB3_COUNT}}": str(len(platform_caps) + len(roadmap)),
             "{{INITIAL_COUNTER_TEXT}}": esc(f"架构模块 {len(gaps)} · 盘点 {len(inventory)} · 已选推进 {mod_cnt}/{total_mods}"),
-            "{{SSR_ARCH_SVG}}": render_briefing_arch_svg(data.get("architecture") or {}),
+            "{{ARCH_SECTION_TITLE}}": esc(arch_title),
+            "{{SSR_ARCH_SVG}}": render_briefing_arch_svg(arch),
             "{{SSR_GAPS_HTML}}": render_briefing_gaps(gaps),
-            "{{SSR_BRIEFING_FILTER_PILLS}}": render_briefing_filter_pills(data.get("filter_options") or [], inventory),
+            "{{SSR_BRIEFING_FILTER_PILLS}}": render_briefing_filter_pills(render_data.get("filter_options") or [], inventory),
             "{{SSR_INVENTORY_HTML}}": render_briefing_inventory(inventory),
             "{{SSR_PLATFORM_CAPS_HTML}}": render_briefing_platform_caps(platform_caps),
             "{{SSR_ROADMAP_HTML}}": render_briefing_roadmap(roadmap),
         })
 
-    output_html = template_text
-    for placeholder, value in replacements.items():
-        output_html = output_html.replace(placeholder, value)
-
-    return output_html
+    slot_pattern = re.compile("|".join(re.escape(key) for key in replacements))
+    return slot_pattern.sub(lambda match: replacements[match.group(0)], template_text)
 
 
 def main() -> int:
@@ -1040,6 +1064,16 @@ def main() -> int:
 
     input_path = Path(args.input).resolve()
     output_path = Path(args.output).resolve()
+
+    same_target = input_path == output_path
+    if not same_target and input_path.exists() and output_path.exists():
+        try:
+            same_target = input_path.samefile(output_path)
+        except OSError:
+            same_target = False
+    if same_target:
+        print(f"[ERROR] 禁止输出路径覆盖输入 JSON 文件: {output_path}", file=sys.stderr)
+        return 2
 
     if not args.allow_in_skill_dir:
         try:
@@ -1060,9 +1094,6 @@ def main() -> int:
         return 2
 
     html_out = render_report(data, mode)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(html_out, encoding="utf-8")
-    print(f"[OK] Generated {mode} report: {output_path} ({len(html_out.encode('utf-8'))} bytes)")
 
     if not args.skip_validate:
         errors, warnings = validate_html(html_out, expected_mode=mode)
@@ -1073,8 +1104,15 @@ def main() -> int:
         if errors:
             print(f"[ERROR] Post-render validation failed with {len(errors)} error(s).", file=sys.stderr)
             return 1
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(html_out, encoding="utf-8")
+        print(f"[OK] Generated {mode} report: {output_path} ({len(html_out.encode('utf-8'))} bytes)")
         print(f"[PASS]  Post-render validation passed ({len(warnings)} warning(s)).")
+        return 0
 
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(html_out, encoding="utf-8")
+    print(f"[OK] Generated {mode} report: {output_path} ({len(html_out.encode('utf-8'))} bytes)")
     return 0
 
 

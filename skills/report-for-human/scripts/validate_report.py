@@ -9,11 +9,13 @@ Verifies all structural hard constraints and anti-degradation rules for Mode A
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlsplit
 
 
 WATERMARK = "report-for-human@v2.1.0"
@@ -52,22 +54,84 @@ def _normalize_url_candidate(raw_val: str) -> str:
     return no_tabs_newlines.strip("".join(chr(i) for i in range(0x21)))
 
 
-def _is_external_url(raw_val: str) -> bool:
-    cleaned = _normalize_url_candidate(raw_val).lower()
-    if not cleaned or cleaned.startswith("#"):
+def _is_data_media_uri(cleaned_lower: str, *prefixes: str) -> bool:
+    if "," not in cleaned_lower:
         return False
-    return cleaned.startswith("http://") or cleaned.startswith("https://") or cleaned.startswith("//")
+    return any(cleaned_lower.startswith(prefix) for prefix in prefixes)
 
 
-def _extract_external_attr_urls(tag: str, attr_name: str, raw_val: str) -> List[str]:
+def _is_allowed_resource_url(tag: str, attr_name: str, raw_val: str) -> bool:
+    cleaned = _normalize_url_candidate(raw_val)
+    if not cleaned:
+        return True
+    lower = cleaned.lower()
+
+    if tag in ("image", "feimage", "use") and attr_name in ("href", "xlink:href"):
+        if cleaned.startswith("#") and len(cleaned) > 1:
+            return True
+        if tag in ("image", "feimage"):
+            return _is_data_media_uri(lower, "data:image/")
+        return False
+
+    if tag == "img":
+        return _is_data_media_uri(lower, "data:image/")
+    if tag == "video" and attr_name == "poster":
+        return _is_data_media_uri(lower, "data:image/")
+    if tag == "video" and attr_name == "src":
+        return _is_data_media_uri(lower, "data:video/")
+    if tag == "audio" and attr_name == "src":
+        return _is_data_media_uri(lower, "data:audio/")
+    if tag == "source":
+        return _is_data_media_uri(lower, "data:image/", "data:audio/", "data:video/")
+    if tag == "link":
+        return _is_data_media_uri(lower, "data:image/")
+
+    # script, iframe, embed, object must never point to external/separate files
+    return False
+
+
+def _split_srcset_urls(raw_val: str) -> List[str]:
+    candidates: List[str] = []
+    s = raw_val or ""
+    pos = 0
+    while pos < len(s):
+        while pos < len(s) and s[pos] in " \t\r\n,":
+            pos += 1
+        if pos >= len(s):
+            break
+        if s[pos:].lower().startswith("data:"):
+            comma = s.find(",", pos)
+            if comma == -1:
+                candidates.append(s[pos:])
+                break
+            end = comma + 1
+            while end < len(s) and s[end] not in " \t\r\n,":
+                end += 1
+            candidates.append(s[pos:end])
+            pos = end
+        else:
+            comma = s.find(",", pos)
+            seg = s[pos:] if comma == -1 else s[pos:comma]
+            tok = seg.strip().split(None, 1)[0] if seg.strip() else ""
+            if tok:
+                candidates.append(tok)
+            if comma == -1:
+                break
+            pos = comma + 1
+            continue
+        if pos < len(s) and s[pos] in " \t\r\n":
+            next_comma = s.find(",", pos)
+            if next_comma == -1:
+                break
+            pos = next_comma + 1
+    return candidates
+
+
+def _extract_disallowed_attr_urls(tag: str, attr_name: str, raw_val: str) -> List[str]:
     if attr_name == "srcset":
-        candidates = []
-        for entry in (raw_val or "").split(","):
-            token = entry.strip().split(None, 1)[0] if entry.strip() else ""
-            if _is_external_url(token):
-                candidates.append(token)
-        return candidates
-    return [raw_val.strip()] if _is_external_url(raw_val) else []
+        return [tok for tok in _split_srcset_urls(raw_val) if not _is_allowed_resource_url(tag, attr_name, tok)]
+    cleaned = _normalize_url_candidate(raw_val)
+    return [cleaned] if not _is_allowed_resource_url(tag, attr_name, raw_val) else []
 
 
 class StructureInspector(HTMLParser):
@@ -82,40 +146,68 @@ class StructureInspector(HTMLParser):
         self.has_kpi_grid = False
         self.kpi_card_count = 0
         self.tab_panel_indices: set[str] = set()
+        self._tab_panel_depth = 0
+        self._current_tab_index: Optional[str] = None
+
         self.has_svg_topology = False
+        self.has_topo_svg_in_tab1 = False
+        self._in_svg_topo_depth = 0
+
         self.has_svg_architecture = False
-        self.has_svg_tag = False
+        self.has_arch_svg_in_tab1 = False
+        self._in_svg_arch_depth = 0
+
         self.has_pr_batch_bar = False
         self.synced_receipt_slots: set[str] = set()
         self.has_conflict_banner = False
+
         self.has_filter_bar = False
+        self._in_pr_filter_depth = 0
+        self.has_handoff_search_in_tab1 = False
+
         self.has_briefing_filter_bar = False
+        self._in_briefing_filter_depth = 0
+        self.has_briefing_search_in_tab2 = False
+
         self.has_search_input = False
         self.has_zero_artifact_constraint = False
+        self._in_zero_constraint_depth = 0
+        self.zero_constraint_text_parts: List[str] = []
+
         self.in_footer = False
         self.footer_text_parts: List[str] = []
         self.in_style = False
         self.style_parts: List[str] = []
+        self.in_report_data = False
+        self.report_data_parts: List[str] = []
         self.external_resources: List[str] = []
         self.external_links_missing_attrs: List[str] = []
         self.external_link_count = 0
+
         self.criteria_card_count = 0
         self._in_criteria_card_depth = 0
         self._current_criteria_text: List[str] = []
         self.criteria_texts: List[str] = []
+
         self.gap_card_count = 0
         self._in_gap_card_depth = 0
-        self._current_gap_text: List[str] = []
-        self.gap_texts: List[str] = []
+        self._in_gap_box_depth = 0
+        self._in_gap_box_label_depth = 0
+        self._in_gap_box_body_depth = 0
+        self._current_gap_box_label: List[str] = []
+        self._current_gap_box_body: List[str] = []
+        self._current_gap_boxes: List[Tuple[str, str]] = []
+        self.gap_card_boxes: List[List[Tuple[str, str]]] = []
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         attr_map: Dict[str, str] = {k.lower(): (v or "") for k, v in attrs}
         cls_tokens = set(attr_map.get("class", "").split())
         rfh_role = attr_map.get("data-rfh-role", "")
+        non_void = tag not in _VOID_ELEMENTS
 
         for attr_name in _RESOURCE_ATTRS_BY_TAG.get(tag, ()):
-            for ext_url in _extract_external_attr_urls(tag, attr_name, attr_map.get(attr_name, "")):
-                self.external_resources.append(f"<{tag} {attr_name}> 禁止引入外网/协议相对资源: {ext_url}")
+            for bad_url in _extract_disallowed_attr_urls(tag, attr_name, attr_map.get(attr_name, "")):
+                self.external_resources.append(f"<{tag} {attr_name}> 禁止引入外网或非自包含外部资源: {bad_url}")
 
         inline_style = attr_map.get("style", "")
         if inline_style and _CSS_EXTERNAL_URL_RE.search(inline_style):
@@ -123,6 +215,8 @@ class StructureInspector(HTMLParser):
 
         if tag == "style":
             self.in_style = True
+        if tag == "script" and attr_map.get("id") == "report-data":
+            self.in_report_data = True
 
         if tag == "html":
             self.report_mode = attr_map.get("data-report-mode") or None
@@ -137,11 +231,27 @@ class StructureInspector(HTMLParser):
             idx = attr_map.get("data-tab-index", "")
             if idx:
                 self.tab_panel_indices.add(idx)
-        elif rfh_role == "svg-topology":
+            if non_void and self._tab_panel_depth == 0:
+                self._tab_panel_depth = 1
+                self._current_tab_index = idx
+        elif self._tab_panel_depth > 0 and non_void:
+            self._tab_panel_depth += 1
+
+        if rfh_role == "svg-topology":
             self.has_svg_topology = True
-        elif rfh_role == "svg-architecture":
+            if non_void and self._in_svg_topo_depth == 0:
+                self._in_svg_topo_depth = 1
+        elif self._in_svg_topo_depth > 0 and non_void:
+            self._in_svg_topo_depth += 1
+
+        if rfh_role == "svg-architecture":
             self.has_svg_architecture = True
-        elif rfh_role == "pr-batch-bar":
+            if non_void and self._in_svg_arch_depth == 0:
+                self._in_svg_arch_depth = 1
+        elif self._in_svg_arch_depth > 0 and non_void:
+            self._in_svg_arch_depth += 1
+
+        if rfh_role == "pr-batch-bar":
             self.has_pr_batch_bar = True
         elif rfh_role == "synced-receipt":
             slot = attr_map.get("data-receipt-slot", "")
@@ -149,12 +259,27 @@ class StructureInspector(HTMLParser):
                 self.synced_receipt_slots.add(slot)
         elif rfh_role == "conflict-banner":
             self.has_conflict_banner = True
-        elif rfh_role == "pr-filter-bar":
+
+        if rfh_role == "pr-filter-bar":
             self.has_filter_bar = True
-        elif rfh_role == "briefing-filter-bar":
+            if non_void and self._in_pr_filter_depth == 0:
+                self._in_pr_filter_depth = 1
+        elif self._in_pr_filter_depth > 0 and non_void:
+            self._in_pr_filter_depth += 1
+
+        if rfh_role == "briefing-filter-bar":
             self.has_briefing_filter_bar = True
-        elif rfh_role == "zero-artifact-constraint":
+            if non_void and self._in_briefing_filter_depth == 0:
+                self._in_briefing_filter_depth = 1
+        elif self._in_briefing_filter_depth > 0 and non_void:
+            self._in_briefing_filter_depth += 1
+
+        if rfh_role == "zero-artifact-constraint":
             self.has_zero_artifact_constraint = True
+            if non_void and self._in_zero_constraint_depth == 0:
+                self._in_zero_constraint_depth = 1
+        elif self._in_zero_constraint_depth > 0 and non_void:
+            self._in_zero_constraint_depth += 1
 
         if "step-card" in cls_tokens:
             self.step_card_count += 1
@@ -166,81 +291,167 @@ class StructureInspector(HTMLParser):
             self.theme_values.add(attr_map["data-theme-value"])
         if attr_map.get("id") == "global-copy-btn":
             self.has_global_copy_btn = True
+
         if tag == "svg":
-            self.has_svg_tag = True
+            if self._in_svg_topo_depth > 0 and self._current_tab_index == "1":
+                self.has_topo_svg_in_tab1 = True
+            if self._in_svg_arch_depth > 0 and self._current_tab_index == "1":
+                self.has_arch_svg_in_tab1 = True
+
         if tag == "input" and (attr_map.get("type") == "search" or attr_map.get("id") in ("pr-search-input", "briefing-search-input")):
             self.has_search_input = True
+            if attr_map.get("id") == "pr-search-input" and self._in_pr_filter_depth > 0 and self._current_tab_index == "1":
+                self.has_handoff_search_in_tab1 = True
+            if attr_map.get("id") == "briefing-search-input" and self._in_briefing_filter_depth > 0 and self._current_tab_index == "2":
+                self.has_briefing_search_in_tab2 = True
 
         if tag == "footer":
             self.in_footer = True
 
         if tag == "a":
-            href = attr_map.get("href", "").strip()
-            if href.startswith("http://") or href.startswith("https://"):
+            href = _normalize_url_candidate(attr_map.get("href", ""))
+            parsed_href = urlsplit(href)
+            if parsed_href.scheme.lower() in ("http", "https") and parsed_href.hostname:
                 self.external_link_count += 1
                 target = attr_map.get("target", "").strip()
                 rel_tokens = set(attr_map.get("rel", "").lower().split())
                 if target != "_blank" or "noopener" not in rel_tokens or "noreferrer" not in rel_tokens:
                     self.external_links_missing_attrs.append(href)
 
-        if "criteria-card" in cls_tokens and tag not in _VOID_ELEMENTS:
+        if "criteria-card" in cls_tokens and non_void:
             self.criteria_card_count += 1
             self._in_criteria_card_depth = 1
             self._current_criteria_text = []
-        elif self._in_criteria_card_depth > 0 and tag not in _VOID_ELEMENTS:
+        elif self._in_criteria_card_depth > 0 and non_void:
             self._in_criteria_card_depth += 1
 
-        if "gap-card" in cls_tokens and tag not in _VOID_ELEMENTS:
+        if "gap-card" in cls_tokens and non_void and self._in_gap_card_depth == 0:
             self.gap_card_count += 1
             self._in_gap_card_depth = 1
-            self._current_gap_text = []
-        elif self._in_gap_card_depth > 0 and tag not in _VOID_ELEMENTS:
+            self._current_gap_boxes = []
+        elif self._in_gap_card_depth > 0 and non_void:
             self._in_gap_card_depth += 1
+            if "gap-box" in cls_tokens and self._in_gap_box_depth == 0:
+                self._in_gap_box_depth = 1
+                self._current_gap_box_label = []
+                self._current_gap_box_body = []
+            elif self._in_gap_box_depth > 0:
+                self._in_gap_box_depth += 1
+                if "gap-box-label" in cls_tokens and self._in_gap_box_label_depth == 0:
+                    self._in_gap_box_label_depth = 1
+                elif self._in_gap_box_label_depth > 0:
+                    self._in_gap_box_label_depth += 1
+                if "gap-box-body" in cls_tokens and self._in_gap_box_body_depth == 0:
+                    self._in_gap_box_body_depth = 1
+                elif self._in_gap_box_body_depth > 0:
+                    self._in_gap_box_body_depth += 1
 
     def handle_endtag(self, tag: str) -> None:
+        non_void = tag not in _VOID_ELEMENTS
         if tag == "style":
             self.in_style = False
+        if tag == "script":
+            self.in_report_data = False
         if tag == "footer":
             self.in_footer = False
-        if self._in_criteria_card_depth > 0 and tag not in _VOID_ELEMENTS:
-            self._in_criteria_card_depth -= 1
-            if self._in_criteria_card_depth == 0:
-                self.criteria_texts.append(" ".join(self._current_criteria_text))
-                self._current_criteria_text = []
-        if self._in_gap_card_depth > 0 and tag not in _VOID_ELEMENTS:
-            self._in_gap_card_depth -= 1
-            if self._in_gap_card_depth == 0:
-                self.gap_texts.append(" ".join(self._current_gap_text))
-                self._current_gap_text = []
+
+        if non_void:
+            if self._tab_panel_depth > 0:
+                self._tab_panel_depth -= 1
+                if self._tab_panel_depth == 0:
+                    self._current_tab_index = None
+            if self._in_svg_topo_depth > 0:
+                self._in_svg_topo_depth -= 1
+            if self._in_svg_arch_depth > 0:
+                self._in_svg_arch_depth -= 1
+            if self._in_pr_filter_depth > 0:
+                self._in_pr_filter_depth -= 1
+            if self._in_briefing_filter_depth > 0:
+                self._in_briefing_filter_depth -= 1
+            if self._in_zero_constraint_depth > 0:
+                self._in_zero_constraint_depth -= 1
+
+            if self._in_criteria_card_depth > 0:
+                self._in_criteria_card_depth -= 1
+                if self._in_criteria_card_depth == 0:
+                    self.criteria_texts.append(" ".join(self._current_criteria_text))
+                    self._current_criteria_text = []
+
+            if self._in_gap_card_depth > 0:
+                if self._in_gap_box_depth > 0:
+                    if self._in_gap_box_label_depth > 0:
+                        self._in_gap_box_label_depth -= 1
+                    if self._in_gap_box_body_depth > 0:
+                        self._in_gap_box_body_depth -= 1
+                    self._in_gap_box_depth -= 1
+                    if self._in_gap_box_depth == 0:
+                        lbl = " ".join(self._current_gap_box_label).strip()
+                        body = " ".join(self._current_gap_box_body).strip()
+                        self._current_gap_boxes.append((lbl, body))
+                self._in_gap_card_depth -= 1
+                if self._in_gap_card_depth == 0:
+                    self.gap_card_boxes.append(self._current_gap_boxes)
+                    self._current_gap_boxes = []
 
     def handle_data(self, data: str) -> None:
         if self.in_style:
             self.style_parts.append(data)
+        if self.in_report_data:
+            self.report_data_parts.append(data)
         if self.in_footer:
             self.footer_text_parts.append(data)
+        if self._in_zero_constraint_depth > 0:
+            text = data.strip()
+            if text:
+                self.zero_constraint_text_parts.append(text)
         if self._in_criteria_card_depth > 0:
             text = data.strip()
             if text:
                 self._current_criteria_text.append(text)
-        if self._in_gap_card_depth > 0:
+        if self._in_gap_box_label_depth > 0:
             text = data.strip()
             if text:
-                self._current_gap_text.append(text)
+                self._current_gap_box_label.append(text)
+        if self._in_gap_box_body_depth > 0:
+            text = data.strip()
+            if text:
+                self._current_gap_box_body.append(text)
+
+
+def _collect_user_data_placeholders(raw_json: str) -> set[str]:
+    if not raw_json.strip():
+        return set()
+    try:
+        parsed = json.loads(raw_json)
+    except ValueError:
+        return set()
+    tokens: set[str] = set()
+    stack: List[Any] = [parsed]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, str):
+            tokens.update(PLACEHOLDER_RE.findall(cur))
+        elif isinstance(cur, dict):
+            stack.extend(cur.values())
+        elif isinstance(cur, list):
+            stack.extend(cur)
+    return tokens
 
 
 def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[List[str], List[str]]:
     errors: List[str] = []
     warnings: List[str] = []
 
-    # 1. Leftover placeholders check
-    leftovers = sorted(set(PLACEHOLDER_RE.findall(html_text)))
-    if leftovers:
-        errors.append(f"遗留未替换占位符: {', '.join(leftovers)}")
-
-    # 2. Parse DOM structure (zero external CDN/network resource check included)
+    # Parse DOM structure first (zero external CDN/network/file resource check included)
     inspector = StructureInspector()
     inspector.feed(html_text)
     inspector.close()
+
+    # 1. Leftover placeholders check (allow literal user data tokens present in parsed #report-data)
+    user_data_tokens = _collect_user_data_placeholders("".join(inspector.report_data_parts))
+    leftovers = sorted(tok for tok in set(PLACEHOLDER_RE.findall(html_text)) if tok not in user_data_tokens)
+    if leftovers:
+        errors.append(f"遗留未替换占位符: {', '.join(leftovers)}")
 
     errors.extend(inspector.external_resources)
     style_text = "\n".join(inspector.style_parts)
@@ -276,7 +487,7 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
 
     # Mode-specific constraints
     if mode == "approval":
-        if not (inspector.has_svg_topology and inspector.has_svg_tag):
+        if not inspector.has_topo_svg_in_tab1:
             errors.append("Mode A（审批态）Tab 1 缺少 SVG 堆叠依赖拓扑")
         if not inspector.has_pr_batch_bar:
             errors.append("Mode A（审批态）Tab 1 缺少批量快捷按钮栏")
@@ -289,15 +500,15 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
             errors.append("Mode B（交接态）Tab 1 缺少冲突解决高亮条")
         if not inspector.has_filter_bar:
             errors.append("Mode B（交接态）Tab 1 缺少状态筛选 Pills 栏")
-        if not inspector.has_search_input:
-            errors.append("Mode B（交接态）Tab 1 缺少关键字搜索框")
+        if not inspector.has_handoff_search_in_tab1:
+            errors.append("Mode B（交接态）Tab 1 筛选栏缺少关键字搜索框 (#pr-search-input)")
     elif mode == "briefing":
-        if not (inspector.has_svg_architecture and inspector.has_svg_tag):
+        if not inspector.has_arch_svg_in_tab1:
             errors.append("Mode C（架构与深度汇报）Tab 1 缺少 SVG 分层架构图")
         if not inspector.has_briefing_filter_bar:
             errors.append("Mode C（架构与深度汇报）Tab 2 缺少类别筛选 Pills 栏")
-        if not inspector.has_search_input:
-            errors.append("Mode C（架构与深度汇报）Tab 2 缺少关键字搜索框")
+        if not inspector.has_briefing_search_in_tab2:
+            errors.append("Mode C（架构与深度汇报）Tab 2 筛选栏缺少关键字搜索框 (#briefing-search-input)")
 
     if mode in ("approval", "handoff"):
         # Tab 2 criteria 3 mandatory fields
@@ -314,14 +525,21 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
         if inspector.gap_card_count == 0:
             errors.append("Mode C（架构与深度汇报）Tab 1 至少需要 1 条架构差距卡片")
         else:
-            for idx, gtext in enumerate(inspector.gap_texts, start=1):
-                missing_lbls = [lbl for lbl in required_gap_labels if lbl not in gtext]
-                if missing_lbls:
-                    errors.append(f"Tab 1 第 {idx} 条架构差距卡片缺少必填维度: {', '.join(missing_lbls)}")
+            for idx, boxes in enumerate(inspector.gap_card_boxes, start=1):
+                box_map = {lbl: body for lbl, body in boxes}
+                missing_or_empty = [lbl for lbl in required_gap_labels if not box_map.get(lbl, "").strip()]
+                if missing_or_empty:
+                    errors.append(f"Tab 1 第 {idx} 条架构差距卡片缺少必填维度（或维度块为空）: {', '.join(missing_or_empty)}")
 
-    # Tab 3 zero-image / zero-file return constraint & char counter
-    if not inspector.has_zero_artifact_constraint or ("零图片" not in html_text and "零文件" not in html_text):
-        errors.append("Tab 3 缺少明确的零图片/零文件回传约束标注")
+    # Tab 3 zero-image / zero-file return constraint checked inside the marker element & char counter
+    constraint_text = " ".join(inspector.zero_constraint_text_parts)
+    has_zero_prohibition = (
+        inspector.has_zero_artifact_constraint
+        and ("零图片" in constraint_text or "零文件" in constraint_text)
+        and any(tok in constraint_text for tok in ("严禁", "禁止", "不得"))
+    )
+    if not has_zero_prohibition:
+        errors.append("Tab 3 的 zero-artifact-constraint 元素缺少明确的零图片/零文件回传禁止约束标注")
     if "prompt-char-count" not in html_text:
         errors.append("Tab 3 缺少实时字符数统计 (#prompt-char-count)")
 
@@ -372,7 +590,7 @@ def main() -> int:
         print(f"\nValidation FAILED ({len(errors)} error(s), {len(warnings)} warning(s)): {path}")
         return 1
 
-    print(f"[PASS]  report-for-human@v2.0.0 validation passed ({len(warnings)} warning(s)): {path}")
+    print(f"[PASS]  {WATERMARK} validation passed ({len(warnings)} warning(s)): {path}")
     return 0
 
 
