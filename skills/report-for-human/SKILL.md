@@ -85,6 +85,7 @@ GitHub 报告一律不在 HTML 中复制 raw diff、patch 或 diff hunk；使用
 - **跨 Tab 联动且本页/常驻复制回执**：跨 Tab 的勾选、批注或状态变更必须实时联动汇总；回执区在本页常驻或随时可达，支持一键复制完整回执（剪贴板受限时提供可手动复制的文本区），切换 Tab 不丢失已选回执。
 - **显式标注回执与执行 Prompt 的先后顺序**：明确区分并标注“审批回执（先确认/复制）”与“执行 Prompt（后触发/执行）”的先后步骤与依赖关系，避免阅读者误将未确认内容直接投入执行。
 - **待确认判据必须展示对应对象/用例与判定口径及影响**：每条待确认判据不得只给抽象结论或编号，必须明确展示其对应的具体对象/用例、判定口径（通过/阻断标准）以及确认或拒绝后的影响。
+- **双态 PR 审批 / 跨机交接流水线**：见 [双态审批与跨机交接](references/dual-mode-handoff.md)，使用 `scripts/render_dual_mode_report.py` 与 `scripts/validate_dual_mode_report.py` 强制路由 Mode A（`approval`）或 Mode B（`handoff`）。
 
 ## 验证并交付
 
