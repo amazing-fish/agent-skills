@@ -1,0 +1,288 @@
+{
+  "mode": "briefing",
+  "meta": {
+    "project_name": "example-org/sample-automation",
+    "report_title": "示例项目分层架构重构与资产覆盖盘点报告",
+    "report_subtitle": "将设备原语、原子能力、目标收敛与业务用例资产严格解耦，同步梳理控制台/录屏/回放与跨平台演进路线",
+    "generated_at": "2026-11-24 15:30:00 +0800",
+    "main_head_sha": "a1b2c3d4e5f67890",
+    "main_head_short": "a1b2c3d4",
+    "main_head_url": "https://github.com/example-org/sample-automation/commit/a1b2c3d4e5f67890"
+  },
+  "steps": [
+    {
+      "actor": "现网审计",
+      "status": "done",
+      "status_label": "已完成盘点",
+      "title": "区分能力验证脚本与真实业务用例",
+      "description": "完成 20 条示例条目的分层核对，明确当前真实业务 regression 覆盖率仍为 0。",
+      "dependency": "作为后续架构拆层的基准事实"
+    },
+    {
+      "actor": "架构收敛",
+      "status": "active",
+      "status_label": "当前焦点",
+      "title": "按五层模型 + 横向引擎对齐实现蓝图",
+      "description": "拆分操作原语、原子能力、任意态收敛与业务断言，分离工具 ERROR 与业务 FAIL 归因。",
+      "dependency": "待架构评审确认后排入 P0/P1 改造"
+    },
+    {
+      "actor": "平台扩展",
+      "status": "pending",
+      "status_label": "规划队列",
+      "title": "补齐控制台调度、录屏回放与 Android 驱动",
+      "description": "在统一执行引擎上接入视频录屏、时间轴回放与第二套 OS 适配器。",
+      "dependency": "强依赖五层接口与 Driver 抽象先行落地"
+    }
+  ],
+  "kpis": [
+    {
+      "label": "分层目标模型",
+      "value": "5 纵 + 6 横",
+      "subtext": "操作→原子→任意态能力→用例→Suite + 六大横向引擎",
+      "tone": "accent"
+    },
+    {
+      "label": "真实业务回归",
+      "value": "0 / 12",
+      "subtext": "其余 8 项仅验证导航/前置能力，需独立业务判据",
+      "tone": "warning"
+    },
+    {
+      "label": "核心工具缺口",
+      "value": "3 项",
+      "subtext": "Console 调度 · 真机录屏 · 时间轴回放",
+      "tone": "danger"
+    },
+    {
+      "label": "锚定 main HEAD",
+      "value": "a1b2c3d4",
+      "subtext": "示例虚构基线 · 点击直达 Commit",
+      "mono": true,
+      "url": "https://github.com/example-org/sample-automation/commit/a1b2c3d4e5f67890"
+    }
+  ],
+  "architecture": {
+    "layers": [
+      {
+        "id": "L5",
+        "name": "L5 用例集层（Suites）",
+        "status": "partial",
+        "gap_id": "gap-l5",
+        "summary": "基础冒烟 / 账号 / 算路 / 哨兵 / 全量目标集"
+      },
+      {
+        "id": "L4",
+        "name": "L4 用例资产层（Business Assets）",
+        "status": "gap",
+        "gap_id": "gap-l4",
+        "summary": "业务场景 + 独立确认判据；PASS/FAIL/BLOCK 与 ERROR 分离"
+      },
+      {
+        "id": "L3",
+        "name": "L3 复合能力层（Any-State Capabilities）",
+        "status": "gap",
+        "gap_id": "gap-l3",
+        "summary": "任意起始条件下自动感知并收敛至目标终态（如登录/算路）"
+      },
+      {
+        "id": "L2",
+        "name": "L2 原子能力层（Atomic Skills）",
+        "status": "ready",
+        "gap_id": "gap-l2",
+        "summary": "特定起始条件下的固定流执行 + 前后双帧校准"
+      },
+      {
+        "id": "L1",
+        "name": "L1 操作原语层（OS Drivers）",
+        "status": "partial",
+        "gap_id": "gap-l1",
+        "summary": "点击/滑动/输入/采树/截图/录屏（Harmony / Android Adapter）"
+      }
+    ],
+    "horizontals": [
+      { "id": "H1", "name": "CLI / 调度", "detail": "run / suite / act" },
+      { "id": "H2", "name": "判定与归因", "detail": "业务 vs 能力故障" },
+      { "id": "H3", "name": "控制台与录屏回放", "detail": "调度 + video + timeline" },
+      { "id": "H4", "name": "探索与资产生成", "detail": "session -> case -> approve" },
+      { "id": "H5", "name": "自进化（RSI）", "detail": "漂移识别与受审采纳" }
+    ]
+  },
+  "gaps": [
+    {
+      "id": "gap-l1",
+      "code": "L1 · 操作层",
+      "title": "设备驱动接口尚未彻底平台无关，缺少录屏能力",
+      "severity": "medium",
+      "status_label": "部分就绪",
+      "current_state": "示例项目中已封装单一 OS 驱动与离线回放替身，但未实现 screenrecord。",
+      "target_design": "定义统一的 PlatformAdapter 抽象，输出一致的 UI 树、帧流与同步录屏文件。",
+      "blocker": "需将硬编码的系统桌面包名与按键映射从公共调度层下沉到具体 OS Driver。"
+    },
+    {
+      "id": "gap-l2",
+      "code": "L2 · 原子能力",
+      "title": "特定起始条件原子流可用，但与业务断言混在用例里",
+      "severity": "ok",
+      "status_label": "基线可用",
+      "current_state": "已支持 pre_obs → 定位 → 策略校验 → 下发 → post_obs。",
+      "target_design": "明确 L2 只返回 succeeded / blocked / error，绝不承担业务 pass/fail。",
+      "blocker": "需将公共条件与策略例外从引擎硬编码退回数据驱动声明。"
+    },
+    {
+      "id": "gap-l3",
+      "code": "L3 · 任意态能力",
+      "title": "缺少运行态事实探测与状态收敛，登录/算路仍强依赖初始条件",
+      "severity": "high",
+      "status_label": "关键缺口",
+      "current_state": "不少场景依赖人工传参声明环境状态，否则直接 blocked。",
+      "target_design": "引入运行态事实探测器与状态图收敛器，从任意前态自动完成前置准备。",
+      "blocker": "需补齐登录态、当前车辆及页面前置探测器的统一实现。"
+    },
+    {
+      "id": "gap-l4",
+      "code": "L4 · 业务用例资产",
+      "title": "能力测试与真实业务测试混记，真实业务覆盖虚高",
+      "severity": "high",
+      "status_label": "急需分层",
+      "current_state": "导航冒烟或纯前置能力常与核心业务混在同一张 readiness 清单内。",
+      "target_design": "用例仅编排 L3 能力与业务 Oracle 断言；capability 故障一律判 ERROR。",
+      "blocker": "需清理历史混合用例清单并补齐独立业务判据确认。"
+    },
+    {
+      "id": "gap-l5",
+      "code": "L5 · 目标用例集",
+      "title": "缺少按业务目标划分的多维度用例集矩阵",
+      "severity": "medium",
+      "status_label": "待建体系",
+      "current_state": "当前仅有单一基础冒烟集合。",
+      "target_design": "建立基础、账号、算路、哨兵、全量 5 类独立 Suite，按发布节奏门禁调度。",
+      "blocker": "强依赖 L4 真实业务用例与能力测试分档完成。"
+    }
+  ],
+  "filter_options": [
+    { "id": "all", "label": "全部" },
+    { "id": "framework_smoke", "label": "框架/基础冒烟" },
+    { "id": "capability_precondition", "label": "纯能力验证" },
+    { "id": "business_vpd_core", "label": "核心业务用例" },
+    { "id": "business_k89_map", "label": "专项地图用例" }
+  ],
+  "inventory": [
+    {
+      "id": "EXAMPLE-SMK-01",
+      "title": "底栏切换冒烟（能力与框架验证）",
+      "kind": "framework_smoke",
+      "kind_label": "框架/基础冒烟",
+      "maturity": "approved regression",
+      "tone": "success",
+      "summary": "验证底栏导航定位与状态签名闭环，属于架构与框架基线，不代表业务核心功能已全量验收。",
+      "details": "独立判据已确认，可直接作为引擎回归哨兵。"
+    },
+    {
+      "id": "EXAMPLE-CAP-01",
+      "title": "密码登录与弹窗清理链路",
+      "kind": "capability_precondition",
+      "kind_label": "纯能力验证",
+      "maturity": "draft",
+      "tone": "warning",
+      "summary": "验证账号密码输入、系统菜单逃生与主页可达性；属于前置能力（L2/L3），不能计为业务通过率。",
+      "details": "后续纳入账号专项能力测试集，与核心业务 Suite 隔离统计。"
+    },
+    {
+      "id": "EXAMPLE-BIZ-01",
+      "title": "按收藏名称搜索车位并发起算路",
+      "kind": "business_vpd_core",
+      "kind_label": "核心业务用例",
+      "maturity": "draft（机制验证通过）",
+      "tone": "info",
+      "summary": "真实核心业务用例，需消费独立的收藏实测来源并断言同一实体身份后方可计入正式通过率。",
+      "details": "等待业务判据确认及数据驱动改造收口后晋级。"
+    }
+  ],
+  "platform_capabilities": [
+    {
+      "title": "可视化控制台（Console）",
+      "status": "已有只读骨架，缺调度与联动",
+      "tone": "warning",
+      "current": "已有实时投屏、手动操作兜底与运行历史监控。",
+      "gap": "暂无法在网页端选 Suite 启动运行，也无步骤级实时高亮与时间轴跳帧。"
+    },
+    {
+      "title": "设备录屏（Screen Recording）",
+      "status": "待建设（0 实现）",
+      "tone": "danger",
+      "current": "仅有单帧截屏与内存 JPEG 帧流，无 MP4 录制与时间轴锚点。",
+      "gap": "需在 L1 与 Console 侧补齐受控录屏启停及 action/obs 时间戳绑定。"
+    },
+    {
+      "title": "执行回放（Playback vs ReplayDevice）",
+      "status": "概念待拆分",
+      "tone": "warning",
+      "current": "现有 replay 实为开发侧离线替身设备（模拟 world.json），并非录像回放器。",
+      "gap": "需在 Console 新增双栏同步回放视图（左侧视频+点击热区 / 右侧步骤+UI树+Verdict）。"
+    },
+    {
+      "title": "多端适配（Harmony Next → Android）",
+      "status": "Harmony 专属耦合",
+      "tone": "danger",
+      "current": "平台包名、hdc/uitest/aa 命令直接决定上层行为。",
+      "gap": "抽离 PlatformAdapter（adb + uiautomator2 + scrcpy），保持 L3/L4/L5 业务资产跨端复用。"
+    }
+  ],
+  "roadmap": [
+    {
+      "phase": "Phase P0 · 立即可行",
+      "title": "分账止血 + 业务破零",
+      "detail": "将既有资产严格拆分为能力项与业务用例；解耦引擎硬编码，推动首个真实核心业务用例通过独立判据晋级。"
+    },
+    {
+      "phase": "Phase P1 · 能力升级",
+      "title": "落地 L3 任意态收敛器 + 5 大 Suite 体系",
+      "detail": "补齐运行态事实探测器，消除对起点页面和手工传参的依赖；划分基础、账号、算路、哨兵、全量 Suite。"
+    },
+    {
+      "phase": "Phase P2 · 使用体验",
+      "title": "Console 调度控制台 + 同步录屏 + 时间轴回放",
+      "detail": "在控制台集成一键起跑、MP4 录屏与步骤级视频/UI 树同步回放。"
+    },
+    {
+      "phase": "Phase P3 · 跨端扩展",
+      "title": "PlatformAdapter 抽象 + Android 驱动试点",
+      "detail": "抽象统一驱动接口并落地 Android（adb/uiautomator2）双端复用。"
+    }
+  ],
+  "prompt": {
+    "target_machine": "架构设计与执行协调",
+    "default_mode": "p0_cleanup",
+    "preamble": "已完成五层架构蓝图、能力与业务边界划分以及控制台/录屏/多端差距评估。",
+    "zero_artifact_constraint": "零图片/零文件回传约束：严禁外传截图、UI 树原件、序列号或明文凭据。",
+    "modes": [
+      {
+        "id": "p0_cleanup",
+        "label": "优先推进 P0 架构分账与业务用例破零",
+        "instructions": "先严格分离 L2/L3 能力条目与 L4 真实业务用例，推动首批核心业务用例进入正式回归。"
+      },
+      {
+        "id": "p2_console",
+        "label": "并行设计 Console 调度与录屏回放能力",
+        "instructions": "基于现有控制台框架补齐视频录制、时间轴索引与双栏回放契约。"
+      }
+    ],
+    "modules": [
+      {
+        "id": "m1",
+        "title": "切分能力验证集与真实业务 Suite",
+        "description": "消除能力验证与业务用例混算通过率的失真统计",
+        "default_checked": true,
+        "prompt_text": "按五层架构重分类既有条目，单独建立 capability_smoke 与核心业务 Suite。"
+      },
+      {
+        "id": "m2",
+        "title": "抽象 PlatformAdapter 并启动录屏与 Console 调度设计",
+        "description": "为后续 Android 接入、MP4 录屏与时间轴回放预留稳定接口",
+        "default_checked": true,
+        "prompt_text": "抽离 L1 设备原语接口，明确帧流复用录屏及 action/obs 时间戳映射契约。"
+      }
+    ]
+  }
+}

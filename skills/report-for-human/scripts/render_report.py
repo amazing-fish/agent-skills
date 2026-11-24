@@ -1,261 +1,1082 @@
 #!/usr/bin/env python3
-"""Render verified report data into the bundled offline visual language."""
+"""
+report-for-human@v2.1.0 deterministic single-file HTML report renderer.
+
+Renders Mode A (approval), Mode B (handoff), or Mode C (briefing) HTML from a
+verified JSON payload using templates/{approval,handoff,briefing}_report.html,
+then runs validate_report.py automatically before exiting.
+"""
+
 from __future__ import annotations
 
 import argparse
-from html import escape
+import html
 import json
+import sys
+from datetime import datetime
 from pathlib import Path
-import re
-import textwrap
-from urllib.parse import urlsplit
-from add_report_controls import enhance_report
+from typing import Any, Dict, List, Tuple
 
-ROOT = Path(__file__).resolve().parents[1]
-KINDS = {"change": "改动", "requirements": "要求", "status": "现状", "mechanism": "机制"}
-STATES = {"done": "已完成", "current": "当前环节", "pending": "待进行", "unknown": "待核实"}
-
-
-def text(value):
-    if not isinstance(value, str):
-        raise ValueError("Report text must be a string")
-    return escape(value, quote=True)
+try:
+    from validate_report import validate_html
+except ImportError:
+    _scripts_dir = str(Path(__file__).resolve().parent)
+    if _scripts_dir not in sys.path:
+        sys.path.insert(0, _scripts_dir)
+    from validate_report import validate_html
 
 
-def link(label, url):
-    if urlsplit(url).scheme not in {"http", "https"} or not urlsplit(url).netloc:
-        raise ValueError("Evidence links must be absolute HTTP(S) URLs")
-    return f'<a href="{text(url)}" rel="noopener noreferrer">{text(label)}</a>'
+SKILL_ROOT = Path(__file__).resolve().parent.parent
+TEMPLATES_DIR = SKILL_ROOT / "templates"
+
+DEFAULT_ZERO_ARTIFACT_CONSTRAINT = (
+    "零图片/零文件回传约束：严禁回传截图、图片、压缩包或任何本地附件文件，"
+    "仅以结构化纯文本/Markdown 汇报执行结果、关键命令摘要与可验证 GitHub 链接。"
+)
 
 
-def badge(label):
-    return f'<span class="rf-badge">{text(label)}</span>'
+def esc(value: Any) -> str:
+    return html.escape("" if value is None else str(value), quote=True)
 
 
-def svg_text(value, x, y, cls, width=14):
-    lines = textwrap.wrap(value, width=width, break_long_words=True) or [""]
-    return f'<text x="{x}" y="{y}" class="{cls}">' + "".join(
-        f'<tspan x="{x}" dy="{0 if i == 0 else 23}">{text(line)}</tspan>'
-        for i, line in enumerate(lines)
-    ) + '</text>'
+def safe_json_for_script(obj: Any) -> str:
+    raw = json.dumps(obj, ensure_ascii=False)
+    return (
+        raw.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+    )
 
 
-def graph(data):
-    owners, nodes, edges = data["owners"], data["nodes"], data["edges"]
-    if not 1 <= len(owners) <= 4 or not 1 <= len(nodes) <= 16:
-        raise ValueError("Use 1–4 owners and 1–16 nodes; split larger diagrams")
-    by_id, occupied = {}, set()
-    for n in nodes:
-        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", n["id"]) or n["id"] in by_id:
-            raise ValueError("Graph node ids must be unique identifiers")
-        col, row = n["owner"], n["row"]
-        if type(col) is not int or type(row) is not int or not 0 <= col < len(owners) or not 0 <= row <= 5:
-            raise ValueError("Invalid owner/row position")
-        if (col, row) in occupied or len(n["title"]) > 24 or len(n["detail"]) > 44:
-            raise ValueError("Keep nodes distinct and labels short; put detail in evidence")
-        occupied.add((col, row)); by_id[n["id"]] = n
-    w, h = len(owners) * 290, (max(n["row"] for n in nodes) + 1) * 190 + 60
-    parts = [f'<svg viewBox="0 0 {w} {h}" role="img" aria-labelledby="flow-title flow-desc">',
-             '<title id="flow-title">参与方与数据流</title><desc id="flow-desc">箭头标注输入、事件或条件；窄屏下方按同一节点与箭头重排。</desc>',
-             '<defs><marker id="rf-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path class="rf-marker" d="M0 0 L8 4 L0 8 Z"/></marker></defs>']
-    for i, owner in enumerate(owners):
-        parts += [f'<rect class="rf-lane rf-lane-{i}" x="{i*290+5}" y="0" width="280" height="{h}" rx="18"/>', svg_text(owner, i*290+21, 30, "rf-node-detail", 20)]
-    for e in edges:
-        if e["from"] not in by_id or e["to"] not in by_id or not e["label"]:
-            raise ValueError("Every edge needs existing endpoints and a meaningful label")
-        a, b = by_id[e["from"]], by_id[e["to"]]
-        ax, ay, bx, by = a["owner"]*290+145, a["row"]*190+190, b["owner"]*290+145, b["row"]*190+66
-        if a["row"] == b["row"]:
-            # Separate incoming/outgoing bottom ports so adjacent edges do not
-            # overlap into an apparently continuous, ambiguous bus.
-            direction = 1 if b["owner"] > a["owner"] else -1
-            ax += direction * 100
-            bx -= direction * 100
-            by = b["row"]*190+190
-            mid = ay + 36
+def validate_url(url: str, field_name: str) -> str:
+    cleaned = (url or "").strip()
+    if not (cleaned.startswith("https://") or cleaned.startswith("http://")):
+        raise ValueError(f"字段 `{field_name}` 必须是真实可直达的 http(s) URL，当前值: {url!r}")
+    return cleaned
+
+
+def ext_link(url: str, label: str, css_class: str = "") -> str:
+    safe_url = validate_url(url, f"link({label})")
+    cls_attr = f' class="{esc(css_class)}"' if css_class else ""
+    return f'<a href="{esc(safe_url)}" target="_blank" rel="noopener noreferrer"{cls_attr}>{esc(label)}</a>'
+
+
+def render_steps(steps: List[Dict[str, Any]]) -> str:
+    if len(steps) != 3:
+        raise ValueError(f"`steps` 必须恰好包含 3 项（Step 1 / Step 2 / Step 3），当前为 {len(steps)} 项")
+    status_meta = {
+        "done": ("step-done", "已完成"),
+        "active": ("step-active", "当前步骤"),
+        "pending": ("step-pending", "待前置完成"),
+    }
+    cards: List[str] = []
+    for idx, step in enumerate(steps, start=1):
+        st = step.get("status", "pending")
+        cls, default_badge = status_meta.get(st, ("step-pending", st))
+        badge_text = step.get("status_label") or default_badge
+        actor = step.get("actor", "")
+        actor_html = f" · {esc(actor)}" if actor else ""
+        arrow_prefix = f"Step {idx}" + (" →" if idx < 3 else "")
+        cards.append(
+            f'<article class="step-card {cls}">'
+            f'  <div class="step-top">'
+            f'    <span class="step-num">{esc(arrow_prefix)}{actor_html}</span>'
+            f'    <span class="step-badge">{esc(badge_text)}</span>'
+            f'  </div>'
+            f'  <h2 class="step-title">{esc(step.get("title", ""))}</h2>'
+            f'  <p class="step-desc">{esc(step.get("description", ""))}</p>'
+            f'  <div class="step-dep">依赖说明：{esc(step.get("dependency", "无前置阻塞"))}</div>'
+            f'</article>'
+        )
+    return "\n".join(cards)
+
+
+def render_kpis(kpis: List[Dict[str, Any]]) -> str:
+    if len(kpis) != 4:
+        raise ValueError(f"`kpis` 必须恰好包含 4 张 KPI 卡片，当前为 {len(kpis)} 张")
+    cards: List[str] = []
+    for kpi in kpis:
+        tone = kpi.get("tone", "default")
+        tone_cls = f" kpi-tone-{esc(tone)}" if tone in ("success", "warning", "danger", "accent") else ""
+        mono_cls = " mono" if kpi.get("mono") else ""
+        value_text = str(kpi.get("value", ""))
+        if kpi.get("url"):
+            value_html = ext_link(kpi["url"], value_text)
         else:
-            mid = (ay + by) / 2
-        label_x, wrap = (ax+9, 9) if ax == bx else (min(ax,bx)+9, 9 if abs(ax-bx)<180 else 22)
-        parts += [f'<g data-edge="{a["id"]}|{b["id"]}"><path class="rf-edge" marker-end="url(#rf-arrow)" d="M{ax} {ay} V{mid} H{bx} V{by}"/>',
-                  svg_text(e["label"], label_x, mid-8, "rf-edge-label", wrap).replace('<text ', f'<text data-wrap="{wrap}" data-edge-label="{a["id"]}|{b["id"]}" ', 1), '</g>']
-    mobile = []
-    for n in nodes:
-        x, y = n["owner"]*290+16, n["row"]*190+58
-        parts += [f'<g data-node="{n["id"]}"><rect class="rf-node" x="{x}" y="{y}" width="258" height="132" rx="14"/>',
-                  svg_text(n["title"], x+15, y+32, "rf-node-title", 12).replace('<text ', f'<text data-node-title="{n["id"]}" ', 1),
-                  svg_text(n["detail"], x+15, y+82, "rf-node-detail", 17).replace('<text ', f'<text data-node-detail="{n["id"]}" ', 1), '</g>']
-        outgoing = [f'<span data-edge-label="{e["from"]}|{e["to"]}">{text(e["label"])}</span> → <span data-node-title="{e["to"]}">{text(by_id[e["to"]]["title"])}</span>' for e in edges if e["from"] == n["id"]]
-        mobile.append(f'<li data-node="{n["id"]}">{badge(owners[n["owner"]])}<h3 data-node-title="{n["id"]}">{text(n["title"])}</h3><p data-node-detail="{n["id"]}">{text(n["detail"])}</p>' + ''.join(f'<p class="rf-caption">↳ {s}</p>' for s in outgoing) + '</li>')
-    parts.append('</svg>')
-    return '<div class="rf-flow">' + ''.join(parts) + '<ol class="rf-flow-mobile">' + ''.join(mobile) + '</ol></div>'
+            value_html = esc(value_text)
+        cards.append(
+            f'<article class="kpi-card{tone_cls}">'
+            f'  <span class="kpi-label">{esc(kpi.get("label", ""))}</span>'
+            f'  <div class="kpi-value{mono_cls}">{value_html}</div>'
+            f'  <span class="kpi-sub">{esc(kpi.get("subtext", ""))}</span>'
+            f'</article>'
+        )
+    return "\n".join(cards)
 
 
-def visual(d):
-    kind = d["kind"]
-    if kind == "change":
-        if d.get("behavior_changes"):
-            return behavior_changes(d)
-        return '<div class="rf-compare"><article><span class="rf-caption">原来</span><h3>'+text(d["before"])+ '</h3></article><span class="rf-arrow" aria-hidden="true">→</span><article><span class="rf-caption">现在</span><h3>'+text(d["after"])+ '</h3></article></div><p class="rf-band">'+text(d["impact"])+ '</p>'
-    if kind == "requirements":
-        return ''.join('<article class="rf-rule">'+badge(r["authority"])+ '<h3>'+text(r["rule"])+ '</h3><div class="rf-rule-grid"><div><span class="rf-caption">适用条件</span><p>'+text(r["when"])+ '</p></div><div><span class="rf-caption">验收方式</span><p>'+text(r["accept"])+ '</p></div><div><span class="rf-caption">来源与确定性</span><p>'+text(r["basis"])+ '</p></div></div></article>' for r in d["rules"])
-    if kind == "status":
-        stages = []
-        for s in d["stages"]:
-            if s["state"] not in STATES:
-                raise ValueError("Stage state must be done/current/pending/unknown")
-            stages.append(f'<li class="rf-stage" data-state="{s["state"]}">'+badge(STATES[s["state"]])+ '<h3>'+text(s["title"])+ '</h3><p>'+text(s["detail"])+ '</p></li>')
-        return '<ol class="rf-stages">'+''.join(stages)+'</ol>'
-    return graph(d["graph"])
+def render_svg_topology(meta: Dict[str, Any], prs: List[Dict[str, Any]]) -> str:
+    by_id: Dict[str, Dict[str, Any]] = {str(p["id"]): p for p in prs}
+    depth_cache: Dict[str, int] = {}
+
+    def get_depth(pid: str, stack: set[str]) -> int:
+        if pid in depth_cache:
+            return depth_cache[pid]
+        if pid in stack:
+            return 1
+        pr = by_id.get(pid)
+        if not pr:
+            return 0
+        deps = [str(d) for d in (pr.get("depends_on") or []) if str(d) in by_id]
+        if not deps:
+            depth_cache[pid] = 1
+            return 1
+        stack.add(pid)
+        d = 1 + max(get_depth(dep, stack) for dep in deps)
+        stack.remove(pid)
+        depth_cache[pid] = d
+        return d
+
+    layers: Dict[int, List[Dict[str, Any]]] = {}
+    for pr in prs:
+        d = get_depth(str(pr["id"]), set())
+        layers.setdefault(d, []).append(pr)
+
+    max_depth = max(layers.keys(), default=1)
+    max_rows = max((len(v) for v in layers.values()), default=1)
+
+    node_w = 196
+    node_h = 64
+    col_gap = 66
+    row_gap = 20
+    pad_x = 24
+    pad_y = 24
+
+    total_cols = max_depth + 1
+    svg_w = pad_x * 2 + total_cols * node_w + (total_cols - 1) * col_gap
+    svg_h = max(140, pad_y * 2 + max_rows * node_h + max(0, max_rows - 1) * row_gap)
+
+    positions: Dict[str, Tuple[float, float]] = {}
+    root_x = pad_x
+    root_y = (svg_h - node_h) / 2
+    positions["__MAIN__"] = (root_x, root_y)
+
+    for depth in range(1, max_depth + 1):
+        col_items = layers.get(depth, [])
+        col_h = len(col_items) * node_h + max(0, len(col_items) - 1) * row_gap
+        start_y = (svg_h - col_h) / 2
+        x = pad_x + depth * (node_w + col_gap)
+        for r_idx, pr in enumerate(col_items):
+            y = start_y + r_idx * (node_h + row_gap)
+            positions[str(pr["id"])] = (x, y)
+
+    edges_svg: List[str] = []
+    for pr in prs:
+        pid = str(pr["id"])
+        deps = [str(d) for d in (pr.get("depends_on") or []) if str(d) in by_id]
+        parents = deps if deps else ["__MAIN__"]
+        tx, ty = positions[pid]
+        for parent_id in parents:
+            sx, sy = positions[parent_id]
+            x1 = sx + node_w
+            y1 = sy + node_h / 2
+            x2 = tx
+            y2 = ty + node_h / 2
+            cx1 = x1 + col_gap * 0.45
+            cx2 = x2 - col_gap * 0.45
+            edges_svg.append(
+                f'<path d="M {x1:.1f} {y1:.1f} C {cx1:.1f} {y1:.1f}, {cx2:.1f} {y2:.1f}, {x2:.1f} {y2:.1f}" '
+                f'fill="none" stroke="var(--border-strong)" stroke-width="2" marker-end="url(#dag-arrow)" />'
+            )
+
+    nodes_svg: List[str] = []
+    # Main root node
+    main_short = meta.get("main_head_short") or str(meta.get("main_head_sha", "HEAD"))[:8]
+    nodes_svg.append(
+        f'<g class="dag-root" transform="translate({root_x:.1f}, {root_y:.1f})">'
+        f'  <rect width="{node_w}" height="{node_h}" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="2" />'
+        f'  <text x="12" y="25" font-size="11" font-weight="700" fill="var(--accent)">MAIN ANCHOR</text>'
+        f'  <text x="12" y="46" font-size="14" font-weight="800" font-family="var(--font-mono)" fill="var(--text-primary)">{esc(main_short)}</text>'
+        f'</g>'
+    )
+
+    status_fill = {
+        "ready": "var(--bg-surface)",
+        "approved": "var(--success-soft)",
+        "warning": "var(--warning-soft)",
+        "blocked": "var(--danger-soft)",
+    }
+    status_label_color = {
+        "ready": "var(--success)",
+        "approved": "var(--success)",
+        "warning": "var(--warning)",
+        "blocked": "var(--danger)",
+    }
+
+    for pr in prs:
+        pid = str(pr["id"])
+        x, y = positions[pid]
+        st = pr.get("status", "ready")
+        fill = status_fill.get(st, "var(--bg-surface)")
+        st_color = status_label_color.get(st, "var(--text-muted)")
+        checked_cls = "is-approved" if pr.get("default_checked") else "is-unapproved"
+        short_title = str(pr.get("title", ""))
+        if len(short_title) > 18:
+            short_title = short_title[:17] + "…"
+        st_badge = pr.get("status_label") or st
+        nodes_svg.append(
+            f'<g class="dag-node {checked_cls}" data-svg-pr-id="{esc(pid)}" '
+            f'tabindex="0" role="button" aria-label="定位 PR #{esc(pr.get("number"))}: {esc(pr.get("title", ""))}" '
+            f'transform="translate({x:.1f}, {y:.1f})">'
+            f'  <title>点击定位 PR #{esc(pr.get("number"))}: {esc(pr.get("title", ""))}</title>'
+            f'  <rect width="{node_w}" height="{node_h}" rx="10" fill="{fill}" stroke="var(--border-strong)" stroke-width="1.6" />'
+            f'  <text x="12" y="24" font-size="12.5" font-weight="800" font-family="var(--font-mono)" fill="var(--accent)">#{esc(pr.get("number"))}</text>'
+            f'  <text x="{node_w - 12}" y="24" text-anchor="end" font-size="11" font-weight="700" fill="{st_color}">{esc(st_badge)}</text>'
+            f'  <text x="12" y="46" font-size="12" font-weight="600" fill="var(--text-primary)">{esc(short_title)}</text>'
+            f'</g>'
+        )
+
+    return (
+        f'<svg class="topology-svg" viewBox="0 0 {svg_w:.0f} {svg_h:.0f}" width="{svg_w:.0f}" height="{svg_h:.0f}" '
+        f'role="img" aria-label="PR 堆叠依赖拓扑图">'
+        f'  <defs>'
+        f'    <marker id="dag-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">'
+        f'      <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--border-strong)" />'
+        f'    </marker>'
+        f'  </defs>'
+        f'  {"".join(edges_svg)}'
+        f'  {"".join(nodes_svg)}'
+        f'</svg>'
+    )
 
 
-def evidence_list(items):
-    return '<ul class="rf-evidence">' + ''.join(
-        '<li><strong>' + (link(e["label"], e["url"]) if e.get("url") else text(e["label"]))
-        + '</strong><p>' + text(e["detail"]) + '</p></li>' for e in items) + '</ul>'
+def badge_class_for_status(status: str) -> str:
+    return {
+        "ready": "badge-success",
+        "approved": "badge-success",
+        "merged": "badge-success",
+        "signed": "badge-success",
+        "conflict_resolved": "badge-warning",
+        "warning": "badge-warning",
+        "guarded": "badge-warning",
+        "blocked": "badge-danger",
+        "deferred": "badge-danger",
+    }.get(status, "badge-accent")
 
 
-def behavior_changes(d):
-    """Keep authored behavioral consequences visible; never infer them from CI."""
-    items = d.get('behavior_changes', [])
-    if not isinstance(items, list):
-        raise ValueError('behavior_changes must be a list')
-    result = []
-    for item in items:
-        for field in ('title', 'before', 'after', 'impact', 'fallback', 'basis'):
-            if not isinstance(item, dict) or not isinstance(item.get(field), str) or not item[field].strip():
-                raise ValueError(f'Missing nonempty behavior_changes.{field}')
-        source = link(item['basis'], item['url']) if item.get('url') else text(item['basis'])
-        result.append('<article class="rf-rule"><h3>' + text(item['title']) + '</h3>'
-                      '<div class="rf-compare"><article><span class="rf-caption">原来</span><p>'
-                      + text(item['before']) + '</p></article><span class="rf-arrow" aria-hidden="true">→</span>'
-                      '<article><span class="rf-caption">现在</span><p>' + text(item['after']) + '</p></article></div>'
-                      '<p><strong>使用者影响与代价：</strong>' + text(item['impact']) + '</p>'
-                      '<p><strong>回退与恢复：</strong>' + text(item['fallback']) + '</p>'
-                      '<p class="rf-caption"><strong>依据与边界：</strong>' + source + '</p></article>')
-    return ''.join(result)
+def render_approval_prs(prs: List[Dict[str, Any]]) -> str:
+    by_id = {str(p["id"]): p for p in prs}
+    cards: List[str] = []
+    for pr in prs:
+        pid = str(pr["id"])
+        checked = bool(pr.get("default_checked", False))
+        checked_attr = " checked" if checked else ""
+        sel_cls = " is-selected" if checked else ""
+        st = pr.get("status", "ready")
+        st_lbl = pr.get("status_label") or st
+        ci_lbl = pr.get("ci_status", "")
+        deps = [str(d) for d in (pr.get("depends_on") or [])]
+        dep_badges = "".join(
+            f'<span class="badge badge-accent">依赖 #{esc(by_id[d]["number"])}</span>'
+            if d in by_id else f'<span class="badge">依赖 {esc(d)}</span>'
+            for d in deps
+        )
+        ci_badge = f'<span class="badge">{esc(ci_lbl)}</span>' if ci_lbl else ""
+        pr_link = ext_link(pr["url"], f'#{pr["number"]}', "pr-id-link")
+        branch_text = ""
+        if pr.get("head_branch") or pr.get("base_branch"):
+            branch_text = f'<span>分支：<code>{esc(pr.get("head_branch", ""))}</code> → <code>{esc(pr.get("base_branch", "main"))}</code></span>'
+        author_text = f'<span>作者：{esc(pr["author"])}</span>' if pr.get("author") else ""
+        diff_text = f'<span>变更：<code>{esc(pr["diff_stat"])}</code></span>' if pr.get("diff_stat") else ""
+
+        details_html = ""
+        if pr.get("notes") or pr.get("evidence_links"):
+            ev_links = ""
+            if pr.get("evidence_links"):
+                ev_items = "".join(
+                    f'<li>{ext_link(lk["url"], lk["label"])}</li>'
+                    for lk in pr["evidence_links"]
+                )
+                ev_links = f'<ul style="margin:6px 0 0;padding-left:18px;">{ev_items}</ul>'
+            details_html = (
+                f'<details class="pr-details">'
+                f'  <summary>查看审查要点与核验证据</summary>'
+                f'  <div class="pr-details-body">'
+                f'    <div>{esc(pr.get("notes", ""))}</div>'
+                f'    {ev_links}'
+                f'  </div>'
+                f'</details>'
+            )
+
+        cards.append(
+            f'<article class="pr-card{sel_cls}" id="pr-card-{esc(pid)}">'
+            f'  <div class="pr-top">'
+            f'    <label class="pr-check-label">'
+            f'      <input type="checkbox" class="pr-checkbox" data-pr-id="{esc(pid)}"{checked_attr}>'
+            f'      <span>{pr_link}<span class="pr-title-text">{esc(pr.get("title", ""))}</span></span>'
+            f'    </label>'
+            f'    <div class="badge-row">'
+            f'      <span class="badge {badge_class_for_status(st)}">{esc(st_lbl)}</span>'
+            f'      {ci_badge}'
+            f'      {dep_badges}'
+            f'    </div>'
+            f'  </div>'
+            f'  <div class="pr-meta">{branch_text}{author_text}{diff_text}</div>'
+            f'  <p class="pr-summary">{esc(pr.get("summary", ""))}</p>'
+            f'  {details_html}'
+            f'</article>'
+        )
+    return "\n".join(cards)
 
 
-def decision_summary(d):
-    decision = d.get("decision")
-    if not isinstance(decision, dict) or decision.get("status") not in {"required", "none"}:
-        raise ValueError("Explicit decision.status required: required or none; do not infer approval")
-    fields = ["recommendation", "next_step"]
-    if decision["status"] == "required":
-        fields.append("question")
-    for field in fields:
-        if not isinstance(decision.get(field), str) or not decision[field].strip():
-            raise ValueError(f"Missing nonempty decision.{field}")
-    title = '需要你决定：' + decision['question'] if decision['status'] == 'required' else '本次无需你作决定'
-    return '<section class="rfh-decision" aria-labelledby="decision-heading"><h2 id="decision-heading">' + text(title) + '</h2><p><strong>建议：</strong>' + text(decision['recommendation']) + '</p><p><strong>下一步：</strong>' + text(decision['next_step']) + '</p></section>'
+def _is_gate_enabled(g: Dict[str, Any]) -> bool:
+    if "authorized" in g:
+        return bool(g["authorized"])
+    return bool(g.get("default_enabled", False))
 
 
-def references(d):
-    result = ''
-    tabs = d.get('reference_tabs', [])
-    if tabs:
-        if not isinstance(tabs, list) or not 2 <= len(tabs) <= 4:
-            raise ValueError('Use 2–4 reference_tabs for peer alternatives, not verification logs')
-        buttons, panels = [], []
-        for i, tab in enumerate(tabs):
-            label, summary = text(tab['label']), text(tab['summary'])
-            buttons.append(f'<button type="button" role="tab" id="reference-tab-{i}" aria-controls="reference-panel-{i}">{label}</button>')
-            panels.append(f'<section role="tabpanel" id="reference-panel-{i}" aria-labelledby="reference-tab-{i}"><h3>{label}</h3><p>{summary}</p>' + evidence_list(tab.get('evidence', [])) + '</section>')
-        result += '<section aria-labelledby="reference-heading"><h2 id="reference-heading">方案对照</h2><div class="rfh-tabs"><div role="tablist" aria-label="同级方案对照">' + ''.join(buttons) + '</div>' + ''.join(panels) + '</div></section>'
-    evidence = d.get('evidence', []) + d.get('supplementary_evidence', [])
-    if evidence:
-        result += '<details><summary>补充：证据与验证记录</summary>' + evidence_list(evidence) + '</details>'
-    return result
+def render_approval_gates(gates: List[Dict[str, Any]]) -> str:
+    if not gates:
+        return ""
+    items: List[str] = []
+    for g in gates:
+        gid = str(g["id"])
+        enabled = _is_gate_enabled(g)
+        checked_attr = " checked" if enabled else ""
+        auth_cls = " is-authorized" if enabled else ""
+        status_txt = "已授权" if enabled else "未授权"
+        link_html = f' · {ext_link(g["url"], "查看关联对象")}' if g.get("url") else ""
+        items.append(
+            f'<div class="gate-card{auth_cls}">'
+            f'  <div class="gate-info">'
+            f'    <h4 class="gate-title">{esc(g.get("title", ""))} <span class="badge">{esc(gid)}</span></h4>'
+            f'    <p class="gate-desc">{esc(g.get("description", ""))}{link_html}</p>'
+            f'  </div>'
+            f'  <label class="switch-wrap">'
+            f'    <span class="gate-status-label">{status_txt}</span>'
+            f'    <input type="checkbox" class="switch-input gate-toggle" data-gate-id="{esc(gid)}" role="switch"{checked_attr}>'
+            f'  </label>'
+            f'</div>'
+        )
+    return (
+        '<div class="panel-section" data-rfh-role="gate-section">'
+        '  <div class="section-header">'
+        '    <h3 class="section-title">前置门禁独立授权开关</h3>'
+        '    <span class="section-hint">独立开关实时写入回执，明确界定云端机是否有权执行联动动作</span>'
+        '  </div>'
+        f'  <div class="gate-list">{"".join(items)}</div>'
+        '</div>'
+    )
 
 
-def render(d, source_path=None):
-    if d.get("kind") not in KINDS:
-        raise ValueError("kind must be change/requirements/status/mechanism")
-    for key in ["title", "summary", "scope", "as_of"]:
-        if not isinstance(d.get(key), str) or not d[key].strip():
-            raise ValueError(f"Missing nonempty {key}")
-    if len(d.get("next_actions", [])) > 2:
-        raise ValueError("Choose at most two concrete next actions")
-    changes = behavior_changes(d)
-    spotlight = d["spotlight"]
-    limits = ''.join('<p class="rf-limit">'+text(x)+'</p>' for x in d.get("limitations", []))
-    actions = ''.join('<article class="rf-action">'+badge(a["owner"])+ '<h3>'+text(a["action"])+ '</h3><p>'+text(a["effect"])+ '</p></article>' for a in d.get("next_actions", []))
-    decision = decision_summary(d)
-    facts = '<ul class="rf-decision-facts">' + ''.join(
-        '<li>' + (link(f['text'], f['url']) if f.get('url') else text(f['text'])) + '</li>'
-        for f in d.get('decision_facts', [])) + '</ul>' if d.get('decision_facts') else ''
-    scenarios = d.get("scenarios", [])
-    if scenarios and d["kind"] != "mechanism":
-        raise ValueError("Scenario controls are for mechanism graphs")
-    controls, static = '', ''
-    for i, s in enumerate(scenarios):
-        if s["basis"] not in {"观察", "模拟"}:
-            raise ValueError("Scenario basis must explicitly be 观察 or 模拟")
-        nodes = {n["id"] for n in d["graph"]["nodes"]}
-        if not set(s.get("active_nodes", [])) <= nodes or not set(s.get("titles", {})) <= nodes or not set(s.get("details", {})) <= nodes:
-            raise ValueError("Scenario references a missing node")
-        edge_ids = {e['from']+'|'+e['to'] for e in d['graph']['edges']}
-        if not set(s.get('edge_labels', {})) <= edge_ids:
-            raise ValueError("Scenario references a missing edge")
-        for field in ['titles', 'details', 'edge_labels']:
-            for value in s.get(field, {}).values():
-                text(value)
-        controls += f'<button type="button" data-scenario="{i}" aria-pressed="{str(i==0).lower()}">{text(s["label"])} · {text(s["basis"])}</button>'
-        static += '<li>'+text(s["label"])+ '（'+text(s["basis"])+ '）：'+text(s["summary"])+ '</li>'
-    if controls:
-        controls = '<div class="rf-controls" role="group" aria-label="本地场景演示">'+controls+'</div><p class="rf-caption">场景切换只在本页演示，不改变真实系统。</p>'
-    css = '\n'.join((ROOT/'assets'/p).read_text(encoding='utf-8') for p in ['report-theme.css','report-layout.css'])
-    lines = d.get('title_lines')
-    if lines is None:
-        first, sep, rest = d['title'].partition('，')
-        lines = [first+sep, rest] if sep else [d['title']]
-    if not isinstance(lines, list) or not 1 <= len(lines) <= 3 or ''.join(lines) != d['title']:
-        raise ValueError('title_lines must preserve the exact title in 1–3 semantic lines')
-    headline = '<br>'.join(('<em>'+text(line)+'</em>') if i else text(line) for i,line in enumerate(lines))
-    page = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'+text(d["title"])+ '</title><style>'+css+'</style></head><body><main class="human-report"><div class="rf-topbar"><span class="rf-brand">'+text(d["scope"])+ '</span><span>'+text(d["as_of"])+ '</span></div><header class="rf-hero"><div><p class="rf-kicker">'+text(d.get("eyebrow", KINDS[d["kind"]]+' · 人类汇报'))+'</p><h1>'+headline+ '</h1><p class="rf-lead">'+text(d["summary"])+ '</p>'+decision+facts+limits+'</div><aside class="rf-spotlight"><small>'+text(spotlight["label"])+ '</small><strong>'+text(spotlight["value"])+ '</strong><p>'+text(spotlight["detail"])+ '</p></aside></header><section class="rf-panel" aria-labelledby="visual-heading"><p class="rf-kicker">核心关系</p><h2 id="visual-heading">'+text(d.get("visual_title", KINDS[d["kind"]]))+'</h2>'+controls+visual(d)
-    if scenarios:
-        page += '<p class="rf-band" id="scenario-result" aria-live="polite">'+text(scenarios[0]["summary"])+ '</p><ul class="rf-print-states">'+static+'</ul><noscript><p>脚本未启用；主图保留默认关系，以下是各假设状态：</p><ul>'+static+'</ul></noscript>'
-    page += '</section>'
-    if changes and d['kind'] != 'change':
-        page += '<section class="rf-panel" aria-labelledby="behavior-heading"><h2 id="behavior-heading">实际行为与代价</h2>' + changes + '</section>'
-    page += '<section class="rf-actions" aria-label="下一步">'+actions+'</section>'+references(d)+'<footer>'+text(d.get("footer", "自包含 HTML · 状态以标注的取证时间为准 · 汇报不构成操作授权"))+'</footer></main>'
-    payload = json.dumps({"scenarios": scenarios,"nodes": d.get("graph",{}).get("nodes",[]),"edges":d.get("graph",{}).get("edges",[])},ensure_ascii=False).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
-    page += '<script type="application/json" id="report-data">'+payload+'</script><script>\n'+'''(()=>{'use strict';
-const data=JSON.parse(document.getElementById('report-data').textContent);
-function show(i){const s=data.scenarios[i];if(!s)return;
-document.querySelectorAll('[data-scenario]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.scenario)===i)));
-document.querySelectorAll('[data-node]').forEach(n=>n.dataset.dimmed=String(Boolean(s.active_nodes?.length)&&!s.active_nodes.includes(n.dataset.node)));
-function update(selector,value,width){document.querySelectorAll(selector).forEach(el=>{
-if(el.namespaceURI==='http://www.w3.org/2000/svg'){
-const count=Number(el.dataset.wrap)||width;
-const chunks=Array.from(value).reduce((a,c,i)=>{if(i%count===0)a.push('');a[a.length-1]+=c;return a},[]);
-el.replaceChildren(...chunks.map((v,i)=>{const t=document.createElementNS(el.namespaceURI,'tspan');t.setAttribute('x',el.getAttribute('x'));t.setAttribute('dy',i?'23':'0');t.textContent=v;return t}));
-}else el.textContent=value;});}
-for(const n of data.nodes){update('[data-node-title="'+n.id+'"]',s.titles?.[n.id]??n.title,12);update('[data-node-detail="'+n.id+'"]',s.details?.[n.id]??n.detail,17);}
-for(const e of data.edges)update('[data-edge-label="'+e.from+'|'+e.to+'"]',s.edge_labels?.[e.from+'|'+e.to]??e.label,22);
-document.getElementById('scenario-result').textContent=s.basis+'：'+s.summary;}
-document.querySelectorAll('[data-scenario]').forEach(b=>b.addEventListener('click',()=>show(Number(b.dataset.scenario))));
-if(data.scenarios.length)show(0);
-const details=[...document.querySelectorAll('details')];let wasOpen=[];
-addEventListener('beforeprint',()=>{wasOpen=details.map(d=>d.open);details.forEach(d=>d.open=true)});
-addEventListener('afterprint',()=>details.forEach((d,i)=>d.open=wasOpen[i]??false));
-})();'''+'</script></body></html>'
-    return enhance_report(page, source_path=source_path)
+def validate_criterion_fields(c: Dict[str, Any]) -> None:
+    for key, label in (
+        ("target_and_status", "对应对象与现状"),
+        ("ruling", "具体口径与作用"),
+        ("unlock_and_blockers", "解锁效果与残余卡点"),
+    ):
+        raw = c.get(key)
+        if not isinstance(raw, str) or len(raw.strip()) < 4:
+            raise ValueError(
+                f"判据 `{c.get('code', c.get('id'))}` 的必填项 `{key}`（{label}）必须是非空字符串（至少 4 个字符），禁止 null 或只写编号不写口径与卡点"
+            )
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--input', required=True, type=Path)
-    p.add_argument('--output', required=True, type=Path)
-    p.add_argument('--source-path', help='Actual local report path when output is transported through a preview system')
-    a = p.parse_args()
-    try:
-        html = render(json.loads(a.input.read_text(encoding='utf-8')), source_path=a.source_path or a.output.resolve())
-    except (ValueError, KeyError, TypeError) as e:
-        p.error(str(e))
-    a.output.parent.mkdir(parents=True, exist_ok=True)
-    a.output.write_text(html, encoding='utf-8')
-    print(a.output.resolve())
+def render_approval_criteria(criteria: List[Dict[str, Any]]) -> str:
+    cards: List[str] = []
+    for c in criteria:
+        validate_criterion_fields(c)
+        cid = str(c["id"])
+        checked = bool(c.get("default_checked", False))
+        checked_attr = " checked" if checked else ""
+        signed_cls = " is-signed" if checked else ""
+        link_html = ext_link(c["url"], c.get("link_label") or "直达 Issue / PR") if c.get("url") else ""
+        st_lbl = c.get("status_label") or ("建议签字" if checked else "待人工裁决")
+        st_cls = "badge-success" if checked else "badge-warning"
+        cards.append(
+            f'<article class="criteria-card{signed_cls}">'
+            f'  <div class="criteria-header">'
+            f'    <label class="criteria-check">'
+            f'      <input type="checkbox" class="criterion-checkbox" data-criterion-id="{esc(cid)}"{checked_attr}>'
+            f'      <span><span class="criteria-code">{esc(c.get("code", cid))}</span><span class="criteria-title">{esc(c.get("title", ""))}</span></span>'
+            f'    </label>'
+            f'    <div class="badge-row">'
+            f'      <span class="badge {st_cls}">{esc(st_lbl)}</span>'
+            f'      {link_html}'
+            f'    </div>'
+            f'  </div>'
+            f'  <div class="criteria-grid">'
+            f'    <div class="criteria-box"><div class="criteria-box-label">对应对象与现状</div><p class="criteria-box-body">{esc(c["target_and_status"])}</p></div>'
+            f'    <div class="criteria-box"><div class="criteria-box-label">具体口径与作用</div><p class="criteria-box-body">{esc(c["ruling"])}</p></div>'
+            f'    <div class="criteria-box"><div class="criteria-box-label">解锁效果与残余卡点</div><p class="criteria-box-body">{esc(c["unlock_and_blockers"])}</p></div>'
+            f'  </div>'
+            f'</article>'
+        )
+    return "\n".join(cards)
 
 
-if __name__ == '__main__':
-    main()
+def render_handoff_conflict_banner(conflicts: Dict[str, Any]) -> str:
+    has_conflicts = bool(conflicts.get("has_conflicts", False))
+    items = conflicts.get("items") or []
+    summary = conflicts.get("summary") or ("本轮合入无冲突，全部干净合入主干。" if not has_conflicts else "本轮合入过程中遇到并已解决以下冲突：")
+    cls = "conflict-banner" if has_conflicts else "conflict-banner is-clean"
+    title = "冲突解决高亮说明（已落盘核验）" if has_conflicts else "合入冲突核验：零冲突干净合入"
+    list_html = ""
+    if items:
+        lis: List[str] = []
+        for it in items:
+            pr_part = ext_link(it["url"], it["pr_label"]) if it.get("url") else esc(it.get("pr_label", ""))
+            commit_part = f'（解决提交：{ext_link(it["commit_url"], it["commit_sha"])}）' if it.get("commit_url") else ""
+            lis.append(f'<li><strong>{pr_part}</strong>：{esc(it.get("resolution", ""))}{commit_part}</li>')
+        list_html = f'<ul class="conflict-list">{"".join(lis)}</ul>'
+    return (
+        f'<section class="{cls}" id="conflict-banner" data-rfh-role="conflict-banner">'
+        f'  <h3 class="conflict-title">{esc(title)}</h3>'
+        f'  <p style="margin:0 0 6px;font-size:13px;color:var(--text-secondary);">{esc(summary)}</p>'
+        f'  {list_html}'
+        f'</section>'
+    )
+
+
+def render_handoff_filter_pills(prs: List[Dict[str, Any]]) -> str:
+    counts = {
+        "all": len(prs),
+        "merged": sum(1 for p in prs if p.get("status") == "merged"),
+        "conflict_resolved": sum(1 for p in prs if p.get("status") == "conflict_resolved" or p.get("conflict_note")),
+        "blocked": sum(1 for p in prs if p.get("status") in ("blocked", "deferred")),
+    }
+    specs = [
+        ("all", f'全部 ({counts["all"]})'),
+        ("merged", f'已合入 ({counts["merged"]})'),
+        ("conflict_resolved", f'已解冲突 ({counts["conflict_resolved"]})'),
+        ("blocked", f'阻塞/暂缓 ({counts["blocked"]})'),
+    ]
+    return "".join(
+        f'<button type="button" class="filter-pill" data-filter="{key}" aria-pressed="{"true" if key == "all" else "false"}">{esc(label)}</button>'
+        for key, label in specs
+    )
+
+
+def render_handoff_prs(prs: List[Dict[str, Any]]) -> str:
+    cards: List[str] = []
+    for pr in prs:
+        st = pr.get("status", "merged")
+        st_lbl = pr.get("status_label") or {
+            "merged": "已合入 Merged",
+            "conflict_resolved": "冲突已解并合入",
+            "blocked": "阻塞守护",
+            "deferred": "本轮暂缓",
+        }.get(st, st)
+        has_conflict = bool(pr.get("conflict_note")) or st == "conflict_resolved"
+        pr_link = ext_link(pr["url"], f'#{pr["number"]}', "pr-id-link")
+        merge_sha_html = ""
+        if pr.get("merge_commit_sha") and pr.get("merge_commit_url"):
+            merge_sha_html = f'<span>合入提交：<code>{ext_link(pr["merge_commit_url"], pr["merge_commit_sha"][:8])}</code></span>'
+        branch_html = f'<span>分支：<code>{esc(pr.get("head_branch", ""))}</code> → <code>{esc(pr.get("base_branch", "main"))}</code></span>' if pr.get("head_branch") else ""
+        ci_badge = f'<span class="badge badge-info">{esc(pr["ci_status"])}</span>' if pr.get("ci_status") else ""
+        conflict_html = (
+            f'<div class="pr-conflict-note"><strong>冲突解决记录：</strong>{esc(pr["conflict_note"])}</div>'
+            if pr.get("conflict_note") else ""
+        )
+        details_html = ""
+        if pr.get("notes") or pr.get("evidence_links"):
+            ev_links = ""
+            if pr.get("evidence_links"):
+                ev_items = "".join(f'<li>{ext_link(lk["url"], lk["label"])}</li>' for lk in pr["evidence_links"])
+                ev_links = f'<ul style="margin:6px 0 0;padding-left:18px;">{ev_items}</ul>'
+            details_html = (
+                f'<details class="pr-details">'
+                f'  <summary>查看落盘核验记录与证据链接</summary>'
+                f'  <div class="pr-details-body"><div>{esc(pr.get("notes", ""))}</div>{ev_links}</div>'
+                f'</details>'
+            )
+        search_blob = " ".join([
+            f'#{pr.get("number", "")}',
+            str(pr.get("title", "")),
+            str(pr.get("head_branch", "")),
+            str(pr.get("summary", "")),
+            str(pr.get("conflict_note", "")),
+            str(st_lbl),
+        ])
+        cards.append(
+            f'<article class="pr-card" data-status="{esc(st)}" data-has-conflict="{"true" if has_conflict else "false"}" data-search-text="{esc(search_blob)}">'
+            f'  <div class="pr-top">'
+            f'    <div>{pr_link}<span class="pr-title-text">{esc(pr.get("title", ""))}</span></div>'
+            f'    <div class="badge-row">'
+            f'      <span class="badge {badge_class_for_status(st)}">{esc(st_lbl)}</span>'
+            f'      {ci_badge}'
+            f'    </div>'
+            f'  </div>'
+            f'  <div class="pr-meta">{merge_sha_html}{branch_html}</div>'
+            f'  <p class="pr-summary">{esc(pr.get("summary", ""))}</p>'
+            f'  {conflict_html}'
+            f'  {details_html}'
+            f'</article>'
+        )
+    return "\n".join(cards)
+
+
+def render_handoff_gates_audit(gates: List[Dict[str, Any]]) -> str:
+    if not gates:
+        return ""
+    items: List[str] = []
+    for g in gates:
+        authorized = bool(g.get("authorized", g.get("default_enabled", False)))
+        cls = "gate-audit-card is-authorized" if authorized else "gate-audit-card"
+        badge = '<span class="badge badge-success">已授权落盘</span>' if authorized else '<span class="badge badge-warning">未授权 / 保持关闭</span>'
+        link_html = f' · {ext_link(g["url"], "查看审计链接")}' if g.get("url") else ""
+        items.append(
+            f'<div class="{cls}">'
+            f'  <div><strong>{esc(g.get("title", ""))}</strong> <span class="badge">{esc(g.get("id", ""))}</span>'
+            f'  <div style="font-size:12.5px;color:var(--text-secondary);margin-top:2px;">{esc(g.get("description", ""))}{link_html}</div></div>'
+            f'  <div>{badge}</div>'
+            f'</div>'
+        )
+    return (
+        '<div class="panel-section">'
+        '  <div class="section-header"><h3 class="section-title">前置门禁授权落盘审计</h3><span class="section-hint">记录本轮审批授权的实际执行状态</span></div>'
+        f'  <div class="gate-audit-strip">{"".join(items)}</div>'
+        '</div>'
+    )
+
+
+def render_handoff_criteria(criteria: List[Dict[str, Any]]) -> str:
+    cards: List[str] = []
+    for c in criteria:
+        validate_criterion_fields(c)
+        cst = c.get("status", "signed")
+        st_lbl = c.get("status_label") or ("已签字落盘" if cst == "signed" else "阻塞守护")
+        link_html = ext_link(c["url"], c.get("link_label") or "查看落盘凭证") if c.get("url") else ""
+        cards.append(
+            f'<article class="criteria-card" data-cstatus="{esc(cst)}">'
+            f'  <div class="criteria-header">'
+            f'    <div><span class="criteria-code">{esc(c.get("code", c.get("id", "")))}</span><span class="criteria-title">{esc(c.get("title", ""))}</span></div>'
+            f'    <div class="badge-row"><span class="badge {badge_class_for_status(cst)}">{esc(st_lbl)}</span>{link_html}</div>'
+            f'  </div>'
+            f'  <div class="criteria-grid">'
+            f'    <div class="criteria-box"><div class="criteria-box-label">对应对象与现状</div><p class="criteria-box-body">{esc(c["target_and_status"])}</p></div>'
+            f'    <div class="criteria-box"><div class="criteria-box-label">具体口径与作用</div><p class="criteria-box-body">{esc(c["ruling"])}</p></div>'
+            f'    <div class="criteria-box"><div class="criteria-box-label">解锁效果与残余卡点</div><p class="criteria-box-body">{esc(c["unlock_and_blockers"])}</p></div>'
+            f'  </div>'
+            f'</article>'
+        )
+    return "\n".join(cards)
+
+
+def render_prompt_controls(prompt_cfg: Dict[str, Any]) -> Tuple[str, str]:
+    modes = prompt_cfg.get("modes") or []
+    raw_default = prompt_cfg.get("default_mode")
+    default_mode = str(raw_default) if raw_default is not None else (str(modes[0]["id"]) if modes else "default")
+    modes_html = "".join(
+        f'<button type="button" class="prompt-mode-btn" data-prompt-mode="{esc(m["id"])}" '
+        f'aria-pressed="{"true" if str(m["id"]) == default_mode else "false"}">{esc(m["label"])}</button>'
+        for m in modes
+    )
+    modules = prompt_cfg.get("modules") or []
+    modules_html = "".join(
+        f'<label class="module-item">'
+        f'  <input type="checkbox" class="prompt-module-cb" data-module-id="{esc(mod["id"])}"{" checked" if mod.get("default_checked", True) else ""}>'
+        f'  <span><span class="module-title">{esc(mod["title"])}</span><span class="module-desc">{esc(mod.get("description", ""))}</span></span>'
+        f'</label>'
+        for mod in modules
+    )
+    return modes_html, modules_html
+
+
+def build_initial_receipt(data: Dict[str, Any]) -> str:
+    meta = data.get("meta") or {}
+    prs = data.get("prs") or []
+    criteria = data.get("criteria") or []
+    gates = data.get("gates") or []
+    approved = [p for p in prs if p.get("default_checked")]
+    held = [p for p in prs if not p.get("default_checked")]
+    signed = [c for c in criteria if c.get("default_checked")]
+    kept = [c for c in criteria if not c.get("default_checked")]
+
+    lines = [
+        "【审批回执 · report-for-human@v2.1.0】",
+        f'项目：{meta.get("project_name", "")}',
+        f'锚定 main HEAD：{meta.get("main_head_sha", "")} ({meta.get("main_head_url", "")})',
+        "审批模式：Mode A（审批态 Approval）",
+        "",
+    ]
+    if gates:
+        lines.append("一、前置门禁授权：")
+        for g in gates:
+            st = "已授权" if _is_gate_enabled(g) else "未授权"
+            lines.append(f'- [{st}] {g["title"]}（{g["id"]}）')
+        lines.append("")
+    lines.append(f"二、批准合入的 PR（{len(approved)}/{len(prs)}）：")
+    if not approved:
+        lines.append("- （无：本轮暂不批准任何 PR 合入）")
+    else:
+        for p in approved:
+            lines.append(f'- [APPROVE] #{p["number"]} {p["title"]} | {p["url"]}')
+    if held:
+        lines.append(f"暂缓/不合入 PR（{len(held)}）：")
+        for p in held:
+            lines.append(f'- [HOLD] #{p["number"]} {p["title"]}')
+    lines.append("")
+    lines.append(f"三、判据签字裁决（{len(signed)}/{len(criteria)}）：")
+    if not signed:
+        lines.append("- （无：本轮暂不签字任何判据）")
+    else:
+        for c in signed:
+            lines.append(f'- [SIGN-OFF] {c["code"]} {c["title"]}（口径：{c["ruling"]}）')
+    if kept:
+        lines.append(f"暂缓/继续阻塞判据（{len(kept)}）：")
+        for c in kept:
+            lines.append(f'- [KEEP-OPEN] {c["code"]} {c["title"]}（残余卡点：{c["unlock_and_blockers"]}）')
+    lines.append("")
+    lines.append("执行约束：请严格按上述勾选与授权执行合入与签字落盘；完成后输出 Mode B（Handoff）交接报告并锚定最新 main HEAD。")
+    return "\n".join(lines)
+
+
+def build_initial_prompt(data: Dict[str, Any], mode: str) -> str:
+    meta = data.get("meta") or {}
+    prompt_cfg = data.get("prompt") or {}
+    modes = prompt_cfg.get("modes") or []
+    raw_default = prompt_cfg.get("default_mode")
+    default_mode_id = str(raw_default) if raw_default is not None else (str(modes[0]["id"]) if modes else "default")
+    active_mode = next((m for m in modes if str(m["id"]) == default_mode_id), {"label": "标准执行", "instructions": ""})
+    modules = [m for m in (prompt_cfg.get("modules") or []) if m.get("default_checked", True)]
+    constraint = prompt_cfg.get("zero_artifact_constraint") or DEFAULT_ZERO_ARTIFACT_CONSTRAINT
+
+    lines = [
+        f'# 下一环启动指令（{prompt_cfg.get("target_machine", "内网工作机")}）',
+        "",
+        f'- 项目：{meta.get("project_name", "")}',
+        f'- 锚定 main HEAD：{meta.get("main_head_sha", "")} ({meta.get("main_head_url", "")})',
+        f'- 启动模式：{active_mode["label"]}',
+    ]
+    if mode == "handoff":
+        short_sha = meta.get("main_head_short") or str(meta.get("main_head_sha", ""))[:8]
+        lines.append(f'- 同步命令建议：`git fetch origin && git checkout main && git pull --ff-only origin main`（确认 HEAD 为 `{short_sha}`）')
+    lines.append("")
+    if prompt_cfg.get("preamble"):
+        lines.append("## 前置上下文")
+        lines.append(prompt_cfg["preamble"])
+        lines.append("")
+    if active_mode.get("instructions"):
+        lines.append("## 模式执行要求")
+        lines.append(active_mode["instructions"])
+        lines.append("")
+    lines.append(f"## 本轮勾选任务模块（{len(modules)} 项）")
+    for idx, m in enumerate(modules, start=1):
+        lines.append(f'{idx}. **{m["title"]}**：{m.get("prompt_text") or m.get("description", "")}')
+    lines.append("")
+    lines.append("## 强制回传约束（不可违反）")
+    lines.append(f"- {constraint}")
+    return "\n".join(lines)
+
+
+def render_briefing_arch_svg(arch: Dict[str, Any]) -> str:
+    layers = arch.get("layers") or []
+    horizontals = arch.get("horizontals") or []
+    if not layers:
+        raise ValueError("Mode C (`briefing`) 必须提供 `architecture.layers` 分层定义")
+
+    svg_w = 1040
+    left_w = 690
+    right_x = 735
+    right_w = 275
+    pad_x = 24
+    pad_y = 26
+    layer_h = 64
+    layer_gap = 18
+    total_layers_h = len(layers) * layer_h + max(0, len(layers) - 1) * layer_gap
+    svg_h = max(320, pad_y * 2 + total_layers_h + 24)
+
+    status_fill = {
+        "ready": "var(--success-soft)",
+        "partial": "var(--warning-soft)",
+        "gap": "var(--danger-soft)",
+    }
+    status_stroke = {
+        "ready": "var(--success)",
+        "partial": "var(--warning)",
+        "gap": "var(--danger)",
+    }
+
+    parts: List[str] = [
+        f'<svg class="architecture-svg" viewBox="0 0 {svg_w} {svg_h}" width="{svg_w}" height="{svg_h}" role="img" aria-label="系统分层与横向平台架构图">',
+        '  <defs>',
+        '    <marker id="arch-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">',
+        '      <path d="M 0 1 L 10 5 L 0 9 z" fill="var(--border-strong)" />',
+        '    </marker>',
+        '  </defs>',
+    ]
+
+    for idx, layer in enumerate(layers):
+        y = pad_y + idx * (layer_h + layer_gap)
+        st = layer.get("status", "partial")
+        fill = status_fill.get(st, "var(--bg-surface)")
+        stroke = status_stroke.get(st, "var(--accent)")
+        gid = layer.get("gap_id", "")
+        name = str(layer.get("name", ""))
+        summary = str(layer.get("summary", ""))
+        if len(summary) > 54:
+            summary = summary[:53] + "…"
+        gap_attr = f' data-arch-gap-id="{esc(gid)}"' if gid else ""
+        role_attr = ' tabindex="0" role="button"' if gid else ""
+        parts.append(
+            f'  <g class="arch-node"{gap_attr}{role_attr} aria-label="聚焦架构层：{esc(name)}" transform="translate({pad_x}, {y})">'
+            f'    <title>{esc(name)}: {esc(layer.get("summary", ""))}</title>'
+            f'    <rect width="{left_w}" height="{layer_h}" rx="10" fill="{fill}" stroke="{stroke}" stroke-width="1.8" />'
+            f'    <text x="16" y="25" font-size="13.5" font-weight="800" fill="var(--text-primary)">{esc(name)}</text>'
+            f'    <text x="16" y="47" font-size="12" fill="var(--text-secondary)">{esc(summary)}</text>'
+            f'  </g>'
+        )
+        if idx < len(layers) - 1:
+            ax = pad_x + left_w / 2
+            y1 = y + layer_h
+            y2 = y1 + layer_gap - 2
+            parts.append(
+                f'  <line x1="{ax:.1f}" y1="{y1}" x2="{ax:.1f}" y2="{y2}" stroke="var(--border-strong)" stroke-width="2" marker-end="url(#arch-arrow)" />'
+            )
+
+    if horizontals:
+        parts.append(
+            f'  <rect x="{right_x - 10}" y="{pad_y - 10}" width="{right_w + 20}" height="{total_layers_h + 20}" rx="12" '
+            f'fill="var(--info-soft)" stroke="var(--info-border)" stroke-width="1.4" stroke-dasharray="5 4" />'
+        )
+        parts.append(
+            f'  <text x="{right_x + 4}" y="{pad_y + 10}" font-size="11.5" font-weight="800" fill="var(--info)">横向平台能力与基础设施</text>'
+        )
+        h_top = pad_y + 22
+        h_avail = total_layers_h - 24
+        h_gap = 10
+        h_box_h = max(36, (h_avail - max(0, len(horizontals) - 1) * h_gap) / max(1, len(horizontals)))
+        for h_idx, h_item in enumerate(horizontals):
+            hy = h_top + h_idx * (h_box_h + h_gap)
+            parts.append(
+                f'  <g transform="translate({right_x}, {hy:.1f})">'
+                f'    <rect width="{right_w}" height="{h_box_h:.1f}" rx="8" fill="var(--bg-surface)" stroke="var(--border-strong)" stroke-width="1.2" />'
+                f'    <text x="12" y="20" font-size="12.5" font-weight="700" fill="var(--text-primary)">{esc(h_item.get("name", ""))}</text>'
+                f'    <text x="12" y="36" font-size="11" fill="var(--text-muted)">{esc(h_item.get("detail", ""))}</text>'
+                f'  </g>'
+            )
+
+    parts.append("</svg>")
+    return "\n".join(parts)
+
+
+def render_briefing_gaps(gaps: List[Dict[str, Any]]) -> str:
+    cards: List[str] = []
+    for g in gaps:
+        for key, label in (("current_state", "现状"), ("target_design", "目标设计"), ("blocker", "核心卡点 / 债务")):
+            raw = g.get(key)
+            if not isinstance(raw, str) or len(raw.strip()) < 4:
+                raise ValueError(f"架构差距项 `{g.get('code', g.get('id'))}` 的 `{key}`（{label}）必须为非空字符串")
+        gid = str(g["id"])
+        sev = g.get("severity", "medium")
+        st_lbl = g.get("status_label") or sev
+        badge_cls = {"ok": "badge-success", "medium": "badge-warning", "high": "badge-danger"}.get(sev, "badge-accent")
+        cards.append(
+            f'<article class="gap-card" data-gap-id="{esc(gid)}" data-severity="{esc(sev)}">'
+            f'  <div class="gap-header">'
+            f'    <div><span class="gap-code">{esc(g.get("code", gid))}</span><span class="gap-title">{esc(g.get("title", ""))}</span></div>'
+            f'    <span class="badge {badge_cls}">{esc(st_lbl)}</span>'
+            f'  </div>'
+            f'  <div class="gap-grid">'
+            f'    <div class="gap-box"><div class="gap-box-label">现状</div><p class="gap-box-body">{esc(g["current_state"])}</p></div>'
+            f'    <div class="gap-box"><div class="gap-box-label">目标设计</div><p class="gap-box-body">{esc(g["target_design"])}</p></div>'
+            f'    <div class="gap-box"><div class="gap-box-label">核心卡点 / 债务</div><p class="gap-box-body">{esc(g["blocker"])}</p></div>'
+            f'  </div>'
+            f'</article>'
+        )
+    return "\n".join(cards)
+
+
+def render_briefing_filter_pills(options: List[Dict[str, Any]], inventory: List[Dict[str, Any]]) -> str:
+    if not options:
+        options = [{"id": "all", "label": "全部"}]
+    buttons: List[str] = []
+    for opt in options:
+        oid = str(opt["id"])
+        cnt = len(inventory) if oid == "all" else sum(1 for item in inventory if item.get("kind") == oid)
+        pressed = "true" if oid == "all" else "false"
+        buttons.append(
+            f'<button type="button" class="filter-pill" data-filter="{esc(oid)}" aria-pressed="{pressed}">{esc(opt["label"])} ({cnt})</button>'
+        )
+    return "".join(buttons)
+
+
+def render_briefing_inventory(inventory: List[Dict[str, Any]]) -> str:
+    cards: List[str] = []
+    for item in inventory:
+        kind = str(item.get("kind", "other"))
+        tone = item.get("tone", "accent")
+        badge_cls = badge_class_for_status({"success": "approved", "warning": "warning", "danger": "blocked", "info": "ready"}.get(tone, "ready"))
+        search_blob = " ".join([
+            str(item.get("id", "")),
+            str(item.get("title", "")),
+            str(item.get("kind_label", kind)),
+            str(item.get("maturity", "")),
+            str(item.get("summary", "")),
+            str(item.get("details", "")),
+        ])
+        details_html = ""
+        if item.get("details"):
+            details_html = (
+                '<details class="inv-details">'
+                '  <summary>展开详细条目与技术说明</summary>'
+                f'  <div class="inv-details-body">{esc(item["details"])}</div>'
+                '</details>'
+            )
+        cards.append(
+            f'<article class="inv-card" data-kind="{esc(kind)}" data-search-text="{esc(search_blob)}">'
+            f'  <div class="inv-top">'
+            f'    <div><span class="gap-code">{esc(item.get("id", ""))}</span><span class="gap-title">{esc(item.get("title", ""))}</span></div>'
+            f'    <div class="badge-row">'
+            f'      <span class="badge {badge_cls}">{esc(item.get("kind_label", kind))}</span>'
+            f'      <span class="badge">{esc(item.get("maturity", ""))}</span>'
+            f'    </div>'
+            f'  </div>'
+            f'  <p class="inv-summary">{esc(item.get("summary", ""))}</p>'
+            f'  {details_html}'
+            f'</article>'
+        )
+    return "\n".join(cards)
+
+
+def render_briefing_platform_caps(caps: List[Dict[str, Any]]) -> str:
+    cards: List[str] = []
+    for cap in caps:
+        tone = cap.get("tone", "warning")
+        badge_cls = {"success": "badge-success", "warning": "badge-warning", "danger": "badge-danger"}.get(tone, "badge-info")
+        cards.append(
+            '<div class="cap-card">'
+            '  <div class="section-header" style="margin-bottom:8px;">'
+            f'    <h4 class="cap-title">{esc(cap.get("title", ""))}</h4>'
+            f'    <span class="badge {badge_cls}">{esc(cap.get("status", ""))}</span>'
+            '  </div>'
+            f'  <p class="cap-meta"><strong>现状：</strong>{esc(cap.get("current", ""))}</p>'
+            f'  <p class="cap-meta"><strong>缺口/方案：</strong>{esc(cap.get("gap", ""))}</p>'
+            '</div>'
+        )
+    return "\n".join(cards)
+
+
+def render_briefing_roadmap(roadmap: List[Dict[str, Any]]) -> str:
+    items: List[str] = []
+    for r in roadmap:
+        items.append(
+            '<div class="roadmap-item">'
+            f'  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px;"><span class="badge badge-accent">{esc(r.get("phase", ""))}</span><strong>{esc(r.get("title", ""))}</strong></div>'
+            f'  <div style="font-size:13px;color:var(--text-secondary);">{esc(r.get("detail", ""))}</div>'
+            '</div>'
+        )
+    return "\n".join(items)
+
+
+def build_initial_briefing_prompt(data: Dict[str, Any]) -> str:
+    meta = data.get("meta") or {}
+    prompt_cfg = data.get("prompt") or {}
+    modes = prompt_cfg.get("modes") or []
+    raw_default = prompt_cfg.get("default_mode")
+    default_mode_id = str(raw_default) if raw_default is not None else (str(modes[0]["id"]) if modes else "default")
+    active_mode = next((m for m in modes if str(m["id"]) == default_mode_id), {"label": "架构评审摘要", "instructions": ""})
+    modules = [m for m in (prompt_cfg.get("modules") or []) if m.get("default_checked", True)]
+    constraint = prompt_cfg.get("zero_artifact_constraint") or DEFAULT_ZERO_ARTIFACT_CONSTRAINT
+
+    lines = [
+        f'# 架构与演进执行摘要（{prompt_cfg.get("target_machine", "研发协同")}）',
+        "",
+        f'- 项目：{meta.get("project_name", "")}',
+        f'- 锚定 main HEAD：{meta.get("main_head_sha", "")} ({meta.get("main_head_url", "")})',
+        f'- 当前视图模式：{active_mode["label"]}',
+        "",
+    ]
+    if prompt_cfg.get("preamble"):
+        lines.append("## 核心定性与背景")
+        lines.append(prompt_cfg["preamble"])
+        lines.append("")
+    if active_mode.get("instructions"):
+        lines.append("## 当前模式说明")
+        lines.append(active_mode["instructions"])
+        lines.append("")
+    lines.append(f'## 已选定推进项（{len(modules)}/{len(prompt_cfg.get("modules") or [])}）')
+    for idx, m in enumerate(modules, start=1):
+        lines.append(f'{idx}. **{m["title"]}**：{m.get("prompt_text") or m.get("description", "")}')
+    lines.append("")
+    lines.append("## 强制约束")
+    lines.append(f"- {constraint}")
+    return "\n".join(lines)
+
+
+def render_report(data: Dict[str, Any], mode: str) -> str:
+    meta = data.get("meta") or {}
+    project_name = meta.get("project_name")
+    if not project_name:
+        raise ValueError("`meta.project_name` 不能为空")
+    main_head_sha = meta.get("main_head_sha")
+    if not main_head_sha:
+        raise ValueError("`meta.main_head_sha` 不能为空")
+    main_head_url = validate_url(meta.get("main_head_url", ""), "meta.main_head_url")
+    main_head_short = meta.get("main_head_short") or str(main_head_sha)[:8]
+    meta["main_head_short"] = main_head_short
+
+    generated_at = meta.get("generated_at") or datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+    default_titles = {
+        "approval": f"{project_name} · PR 审批与判据签字汇报",
+        "handoff": f"{project_name} · 合入落盘与跨机交接汇报",
+        "briefing": f"{project_name} · 架构蓝图与资产盘点深度汇报",
+    }
+    report_title = meta.get("report_title") or default_titles[mode]
+    report_subtitle = meta.get("report_subtitle") or ""
+    page_title = f"{report_title} | report-for-human@v2.1.0"
+
+    prompt_cfg = data.get("prompt") or {}
+    zero_constraint = prompt_cfg.get("zero_artifact_constraint") or DEFAULT_ZERO_ARTIFACT_CONSTRAINT
+    prompt_cfg["zero_artifact_constraint"] = zero_constraint
+    data["prompt"] = prompt_cfg
+
+    prs = data.get("prs") or []
+    criteria = data.get("criteria") or []
+    gates = data.get("gates") or []
+    steps_html = render_steps(data.get("steps") or [])
+    kpi_html = render_kpis(data.get("kpis") or [])
+    prompt_modes_html, prompt_modules_html = render_prompt_controls(prompt_cfg)
+    initial_prompt = build_initial_briefing_prompt(data) if mode == "briefing" else build_initial_prompt(data, mode)
+
+    template_name = {
+        "approval": "approval_report.html",
+        "handoff": "handoff_report.html",
+        "briefing": "briefing_report.html",
+    }[mode]
+    template_file = TEMPLATES_DIR / template_name
+    template_text = template_file.read_text(encoding="utf-8")
+
+    replacements: Dict[str, str] = {
+        "{{PAGE_TITLE}}": esc(page_title),
+        "{{PROJECT_NAME}}": esc(project_name),
+        "{{REPORT_TITLE}}": esc(report_title),
+        "{{REPORT_SUBTITLE}}": esc(report_subtitle),
+        "{{GENERATED_AT}}": esc(generated_at),
+        "{{MAIN_HEAD_SHORT}}": esc(main_head_short),
+        "{{MAIN_HEAD_URL}}": esc(main_head_url),
+        "{{SSR_STEPS_HTML}}": steps_html,
+        "{{SSR_KPI_HTML}}": kpi_html,
+        "{{SSR_PROMPT_MODES_HTML}}": prompt_modes_html,
+        "{{SSR_PROMPT_MODULES_HTML}}": prompt_modules_html,
+        "{{ZERO_ARTIFACT_CONSTRAINT}}": esc(zero_constraint),
+        "{{INITIAL_PROMPT_CHARS}}": str(len(initial_prompt)),
+        "{{SSR_PROMPT_INITIAL}}": esc(initial_prompt),
+        "{{REPORT_DATA_JSON}}": safe_json_for_script(data),
+    }
+
+    if mode == "approval":
+        approved_cnt = sum(1 for p in prs if p.get("default_checked"))
+        signed_cnt = sum(1 for c in criteria if c.get("default_checked"))
+        gate_cnt = sum(1 for g in gates if _is_gate_enabled(g))
+        gate_part = f" · 门禁 {gate_cnt}/{len(gates)}" if gates else ""
+        initial_receipt = build_initial_receipt(data)
+        replacements.update({
+            "{{TAB1_COUNT}}": str(len(prs)),
+            "{{TAB2_COUNT}}": str(len(criteria)),
+            "{{TAB3_COUNT}}": str(len(prompt_cfg.get("modules") or [])),
+            "{{INITIAL_COUNTER_TEXT}}": esc(f"已批 PR {approved_cnt}/{len(prs)} · 签字 {signed_cnt}/{len(criteria)}{gate_part}"),
+            "{{PR_SELECTION_SUMMARY}}": esc(f"已勾选 {approved_cnt} / {len(prs)} 个 PR"),
+            "{{CRITERIA_SELECTION_SUMMARY}}": esc(f"已签字 {signed_cnt} / {len(criteria)} 项判据"),
+            "{{SSR_SVG_TOPOLOGY}}": render_svg_topology(meta, prs),
+            "{{SSR_PR_LIST_HTML}}": render_approval_prs(prs),
+            "{{SSR_GATES_SECTION_HTML}}": render_approval_gates(gates),
+            "{{SSR_CRITERIA_HTML}}": render_approval_criteria(criteria),
+            "{{SSR_RECEIPT_INITIAL}}": esc(initial_receipt),
+            "{{INITIAL_RECEIPT_CHARS}}": str(len(initial_receipt)),
+        })
+    elif mode == "handoff":
+        merged_cnt = sum(1 for p in prs if p.get("status") in ("merged", "conflict_resolved"))
+        mod_cnt = sum(1 for m in (prompt_cfg.get("modules") or []) if m.get("default_checked", True))
+        total_mods = len(prompt_cfg.get("modules") or [])
+        replacements.update({
+            "{{TAB1_COUNT}}": str(len(prs)),
+            "{{TAB2_COUNT}}": str(len(criteria)),
+            "{{TAB3_COUNT}}": str(total_mods),
+            "{{INITIAL_COUNTER_TEXT}}": esc(f"已合入 {merged_cnt}/{len(prs)} · 模块 {mod_cnt}/{total_mods} · {len(initial_prompt)} 字符"),
+            "{{SSR_CONFLICT_BANNER_HTML}}": render_handoff_conflict_banner(data.get("conflicts") or {}),
+            "{{SSR_FILTER_PILLS_HTML}}": render_handoff_filter_pills(prs),
+            "{{SSR_PR_LIST_HTML}}": render_handoff_prs(prs),
+            "{{SSR_GATES_AUDIT_HTML}}": render_handoff_gates_audit(gates),
+            "{{SSR_CRITERIA_HTML}}": render_handoff_criteria(criteria),
+        })
+    else:
+        gaps = data.get("gaps") or []
+        inventory = data.get("inventory") or []
+        platform_caps = data.get("platform_capabilities") or []
+        roadmap = data.get("roadmap") or []
+        mod_cnt = sum(1 for m in (prompt_cfg.get("modules") or []) if m.get("default_checked", True))
+        total_mods = len(prompt_cfg.get("modules") or [])
+        replacements.update({
+            "{{TAB1_COUNT}}": str(len(gaps)),
+            "{{TAB2_COUNT}}": str(len(inventory)),
+            "{{TAB3_COUNT}}": str(len(platform_caps) + len(roadmap)),
+            "{{INITIAL_COUNTER_TEXT}}": esc(f"架构模块 {len(gaps)} · 盘点 {len(inventory)} · 已选推进 {mod_cnt}/{total_mods}"),
+            "{{SSR_ARCH_SVG}}": render_briefing_arch_svg(data.get("architecture") or {}),
+            "{{SSR_GAPS_HTML}}": render_briefing_gaps(gaps),
+            "{{SSR_BRIEFING_FILTER_PILLS}}": render_briefing_filter_pills(data.get("filter_options") or [], inventory),
+            "{{SSR_INVENTORY_HTML}}": render_briefing_inventory(inventory),
+            "{{SSR_PLATFORM_CAPS_HTML}}": render_briefing_platform_caps(platform_caps),
+            "{{SSR_ROADMAP_HTML}}": render_briefing_roadmap(roadmap),
+        })
+
+    output_html = template_text
+    for placeholder, value in replacements.items():
+        output_html = output_html.replace(placeholder, value)
+
+    return output_html
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Render a report-for-human@v2.1.0 interactive single-file HTML report.")
+    parser.add_argument("--mode", choices=["approval", "handoff", "briefing"], default=None, help="Report mode (approval, handoff, or briefing)")
+    parser.add_argument("--input", required=True, help="Path to input JSON data file")
+    parser.add_argument("--output", required=True, help="Path to output HTML file")
+    parser.add_argument("--skip-validate", action="store_true", help="Skip automatic post-render validation")
+    parser.add_argument("--allow-in-skill-dir", action="store_true", help="Allow writing output inside the skill directory")
+    args = parser.parse_args()
+
+    input_path = Path(args.input).resolve()
+    output_path = Path(args.output).resolve()
+
+    if not args.allow_in_skill_dir:
+        try:
+            output_path.relative_to(SKILL_ROOT)
+            print(f"[ERROR] 禁止将生成的业务汇报写入技能安装目录内: {output_path}", file=sys.stderr)
+            return 2
+        except ValueError:
+            pass
+
+    data = json.loads(input_path.read_text(encoding="utf-8"))
+    json_mode = data.get("mode")
+    mode = args.mode or json_mode
+    if mode not in ("approval", "handoff", "briefing"):
+        print("[ERROR] 必须通过 --mode 或 JSON 顶层 `mode` 字段指定合法模式（approval / handoff / briefing）", file=sys.stderr)
+        return 2
+    if args.mode and json_mode and args.mode != json_mode:
+        print(f"[ERROR] 模式冲突：CLI --mode={args.mode} 与 JSON mode={json_mode} 不一致，禁止混用模式", file=sys.stderr)
+        return 2
+
+    html_out = render_report(data, mode)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(html_out, encoding="utf-8")
+    print(f"[OK] Generated {mode} report: {output_path} ({len(html_out.encode('utf-8'))} bytes)")
+
+    if not args.skip_validate:
+        errors, warnings = validate_html(html_out, expected_mode=mode)
+        for w in warnings:
+            print(f"[WARN]  {w}")
+        for e in errors:
+            print(f"[FAIL]  {e}", file=sys.stderr)
+        if errors:
+            print(f"[ERROR] Post-render validation failed with {len(errors)} error(s).", file=sys.stderr)
+            return 1
+        print(f"[PASS]  Post-render validation passed ({len(warnings)} warning(s)).")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

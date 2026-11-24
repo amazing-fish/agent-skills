@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-report-for-human@v2.0.0 pre-delivery HTML validator.
+report-for-human@v2.1.0 pre-delivery HTML validator.
 
-Verifies all 6 structural hard constraints and anti-degradation rules
-for both Mode A (approval) and Mode B (handoff) single-file HTML reports.
+Verifies all structural hard constraints and anti-degradation rules for Mode A
+(approval), Mode B (handoff), and Mode C (briefing) single-file HTML reports.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 
-WATERMARK = "report-for-human@v2.0.0"
+WATERMARK = "report-for-human@v2.1.0"
 
 _VOID_ELEMENTS = frozenset({
     "area", "base", "br", "col", "embed", "hr", "img",
@@ -33,6 +33,9 @@ _RESOURCE_ATTRS_BY_TAG: Dict[str, Tuple[str, ...]] = {
     "video": ("src", "poster"),
     "embed": ("src",),
     "object": ("data",),
+    "image": ("href", "xlink:href"),
+    "feimage": ("href", "xlink:href"),
+    "use": ("href", "xlink:href"),
 }
 
 _CSS_EXTERNAL_URL_RE = re.compile(
@@ -43,8 +46,16 @@ _CSS_EXTERNAL_URL_RE = re.compile(
 PLACEHOLDER_RE = re.compile(r"\{\{[A-Z0-9_]+\}\}")
 
 
+def _normalize_url_candidate(raw_val: str) -> str:
+    # WHATWG URL standard: remove ASCII tab/LF/CR anywhere and strip leading/trailing C0 + space
+    no_tabs_newlines = re.sub(r"[\t\r\n]+", "", raw_val or "")
+    return no_tabs_newlines.strip("".join(chr(i) for i in range(0x21)))
+
+
 def _is_external_url(raw_val: str) -> bool:
-    cleaned = (raw_val or "").strip().lower()
+    cleaned = _normalize_url_candidate(raw_val).lower()
+    if not cleaned or cleaned.startswith("#"):
+        return False
     return cleaned.startswith("http://") or cleaned.startswith("https://") or cleaned.startswith("//")
 
 
@@ -72,11 +83,13 @@ class StructureInspector(HTMLParser):
         self.kpi_card_count = 0
         self.tab_panel_indices: set[str] = set()
         self.has_svg_topology = False
+        self.has_svg_architecture = False
         self.has_svg_tag = False
         self.has_pr_batch_bar = False
         self.synced_receipt_slots: set[str] = set()
         self.has_conflict_banner = False
         self.has_filter_bar = False
+        self.has_briefing_filter_bar = False
         self.has_search_input = False
         self.has_zero_artifact_constraint = False
         self.in_footer = False
@@ -90,6 +103,10 @@ class StructureInspector(HTMLParser):
         self._in_criteria_card_depth = 0
         self._current_criteria_text: List[str] = []
         self.criteria_texts: List[str] = []
+        self.gap_card_count = 0
+        self._in_gap_card_depth = 0
+        self._current_gap_text: List[str] = []
+        self.gap_texts: List[str] = []
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         attr_map: Dict[str, str] = {k.lower(): (v or "") for k, v in attrs}
@@ -122,6 +139,8 @@ class StructureInspector(HTMLParser):
                 self.tab_panel_indices.add(idx)
         elif rfh_role == "svg-topology":
             self.has_svg_topology = True
+        elif rfh_role == "svg-architecture":
+            self.has_svg_architecture = True
         elif rfh_role == "pr-batch-bar":
             self.has_pr_batch_bar = True
         elif rfh_role == "synced-receipt":
@@ -132,6 +151,8 @@ class StructureInspector(HTMLParser):
             self.has_conflict_banner = True
         elif rfh_role == "pr-filter-bar":
             self.has_filter_bar = True
+        elif rfh_role == "briefing-filter-bar":
+            self.has_briefing_filter_bar = True
         elif rfh_role == "zero-artifact-constraint":
             self.has_zero_artifact_constraint = True
 
@@ -147,7 +168,7 @@ class StructureInspector(HTMLParser):
             self.has_global_copy_btn = True
         if tag == "svg":
             self.has_svg_tag = True
-        if tag == "input" and (attr_map.get("type") == "search" or attr_map.get("id") == "pr-search-input"):
+        if tag == "input" and (attr_map.get("type") == "search" or attr_map.get("id") in ("pr-search-input", "briefing-search-input")):
             self.has_search_input = True
 
         if tag == "footer":
@@ -169,6 +190,13 @@ class StructureInspector(HTMLParser):
         elif self._in_criteria_card_depth > 0 and tag not in _VOID_ELEMENTS:
             self._in_criteria_card_depth += 1
 
+        if "gap-card" in cls_tokens and tag not in _VOID_ELEMENTS:
+            self.gap_card_count += 1
+            self._in_gap_card_depth = 1
+            self._current_gap_text = []
+        elif self._in_gap_card_depth > 0 and tag not in _VOID_ELEMENTS:
+            self._in_gap_card_depth += 1
+
     def handle_endtag(self, tag: str) -> None:
         if tag == "style":
             self.in_style = False
@@ -179,6 +207,11 @@ class StructureInspector(HTMLParser):
             if self._in_criteria_card_depth == 0:
                 self.criteria_texts.append(" ".join(self._current_criteria_text))
                 self._current_criteria_text = []
+        if self._in_gap_card_depth > 0 and tag not in _VOID_ELEMENTS:
+            self._in_gap_card_depth -= 1
+            if self._in_gap_card_depth == 0:
+                self.gap_texts.append(" ".join(self._current_gap_text))
+                self._current_gap_text = []
 
     def handle_data(self, data: str) -> None:
         if self.in_style:
@@ -189,6 +222,10 @@ class StructureInspector(HTMLParser):
             text = data.strip()
             if text:
                 self._current_criteria_text.append(text)
+        if self._in_gap_card_depth > 0:
+            text = data.strip()
+            if text:
+                self._current_gap_text.append(text)
 
 
 def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[List[str], List[str]]:
@@ -211,8 +248,8 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
         errors.append("禁止在 CSS 中引用外网 @import 或 url() 资源")
 
     mode = inspector.report_mode
-    if mode not in ("approval", "handoff"):
-        errors.append(f"<html> 缺少合法的 data-report-mode 属性（需为 approval 或 handoff，当前: {mode!r}）")
+    if mode not in ("approval", "handoff", "briefing"):
+        errors.append(f"<html> 缺少合法的 data-report-mode 属性（需为 approval / handoff / briefing，当前: {mode!r}）")
     elif expected_mode and mode != expected_mode:
         errors.append(f"模式不匹配：期望 {expected_mode}，实际 {mode}")
 
@@ -254,16 +291,33 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
             errors.append("Mode B（交接态）Tab 1 缺少状态筛选 Pills 栏")
         if not inspector.has_search_input:
             errors.append("Mode B（交接态）Tab 1 缺少关键字搜索框")
+    elif mode == "briefing":
+        if not (inspector.has_svg_architecture and inspector.has_svg_tag):
+            errors.append("Mode C（架构与深度汇报）Tab 1 缺少 SVG 分层架构图")
+        if not inspector.has_briefing_filter_bar:
+            errors.append("Mode C（架构与深度汇报）Tab 2 缺少类别筛选 Pills 栏")
+        if not inspector.has_search_input:
+            errors.append("Mode C（架构与深度汇报）Tab 2 缺少关键字搜索框")
 
-    # Tab 2 criteria 3 mandatory fields
-    required_criteria_labels = ("对应对象与现状", "具体口径与作用", "解锁效果与残余卡点")
-    if inspector.criteria_card_count == 0:
-        warnings.append("Tab 2 未检测到判据卡片（若本轮确无判据项可忽略，否则需补充）")
-    else:
-        for idx, ctext in enumerate(inspector.criteria_texts, start=1):
-            missing_lbls = [lbl for lbl in required_criteria_labels if lbl not in ctext]
-            if missing_lbls:
-                errors.append(f"Tab 2 第 {idx} 条判据卡片缺少必填维度: {', '.join(missing_lbls)}")
+    if mode in ("approval", "handoff"):
+        # Tab 2 criteria 3 mandatory fields
+        required_criteria_labels = ("对应对象与现状", "具体口径与作用", "解锁效果与残余卡点")
+        if inspector.criteria_card_count == 0:
+            warnings.append("Tab 2 未检测到判据卡片（若本轮确无判据项可忽略，否则需补充）")
+        else:
+            for idx, ctext in enumerate(inspector.criteria_texts, start=1):
+                missing_lbls = [lbl for lbl in required_criteria_labels if lbl not in ctext]
+                if missing_lbls:
+                    errors.append(f"Tab 2 第 {idx} 条判据卡片缺少必填维度: {', '.join(missing_lbls)}")
+    elif mode == "briefing":
+        required_gap_labels = ("现状", "目标设计", "核心卡点 / 债务")
+        if inspector.gap_card_count == 0:
+            errors.append("Mode C（架构与深度汇报）Tab 1 至少需要 1 条架构差距卡片")
+        else:
+            for idx, gtext in enumerate(inspector.gap_texts, start=1):
+                missing_lbls = [lbl for lbl in required_gap_labels if lbl not in gtext]
+                if missing_lbls:
+                    errors.append(f"Tab 1 第 {idx} 条架构差距卡片缺少必填维度: {', '.join(missing_lbls)}")
 
     # Tab 3 zero-image / zero-file return constraint & char counter
     if not inspector.has_zero_artifact_constraint or ("零图片" not in html_text and "零文件" not in html_text):
@@ -296,9 +350,9 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate a report-for-human@v2.0.0 HTML report.")
+    parser = argparse.ArgumentParser(description="Validate a report-for-human@v2.1.0 HTML report.")
     parser.add_argument("html_file", help="Path to generated HTML file")
-    parser.add_argument("--mode", choices=["approval", "handoff"], default=None, help="Expected report mode")
+    parser.add_argument("--mode", choices=["approval", "handoff", "briefing"], default=None, help="Expected report mode")
     args = parser.parse_args()
 
     path = Path(args.html_file)

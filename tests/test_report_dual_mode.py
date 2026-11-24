@@ -3,7 +3,6 @@ from html.parser import HTMLParser
 import importlib.util
 import json
 from pathlib import Path
-import sys
 import unittest
 
 
@@ -19,8 +18,8 @@ def _load_module(name: str, path: Path):
     return mod
 
 
-renderer = _load_module("dual_mode_renderer", SKILL / "scripts" / "render_dual_mode_report.py")
-validator = _load_module("dual_mode_validator", SKILL / "scripts" / "validate_dual_mode_report.py")
+renderer = _load_module("report_v21_renderer", SKILL / "scripts" / "render_report.py")
+validator = _load_module("report_v21_validator", SKILL / "scripts" / "validate_report.py")
 
 
 class TagParser(HTMLParser):
@@ -33,12 +32,12 @@ class TagParser(HTMLParser):
         self.tags.append((tag, dict(attrs)))
 
 
-class DualModeReportTests(unittest.TestCase):
+class ReportV21Tests(unittest.TestCase):
     def _example(self, mode: str) -> dict:
         return json.loads((SKILL / "examples" / f"{mode}.example.json").read_text(encoding="utf-8"))
 
-    def test_approval_and_handoff_examples_render_and_validate_cleanly(self):
-        for mode in ("approval", "handoff"):
+    def test_all_three_modes_render_and_validate_cleanly(self):
+        for mode in ("approval", "handoff", "briefing"):
             with self.subTest(mode=mode):
                 data = self._example(mode)
                 html_out = renderer.render_report(data, mode)
@@ -46,15 +45,18 @@ class DualModeReportTests(unittest.TestCase):
                 self.assertEqual(errors, [])
                 self.assertEqual(warnings, [])
                 self.assertIn(f'data-report-mode="{mode}"', html_out)
-                self.assertIn("report-for-human@v2.0.0", html_out)
+                self.assertIn("report-for-human@v2.1.0", html_out)
 
     def test_xss_payload_is_escaped_in_html_and_embedded_json(self):
         payload = "</script><img src=x onerror=alert(1)>"
-        for mode in ("approval", "handoff"):
+        for mode in ("approval", "handoff", "briefing"):
             with self.subTest(mode=mode):
                 data = copy.deepcopy(self._example(mode))
                 data["meta"]["report_title"] = payload
-                data["prs"][0]["summary"] = payload
+                if mode in ("approval", "handoff"):
+                    data["prs"][0]["summary"] = payload
+                else:
+                    data["gaps"][0]["current_state"] = payload
                 data["prompt"]["preamble"] = payload
                 html_out = renderer.render_report(data, mode)
                 parsed = TagParser(html_out)
@@ -69,26 +71,55 @@ class DualModeReportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             renderer.render_report(data, "approval")
 
-    def test_validator_rejects_mode_mismatch_external_cdn_and_placeholders(self):
+    def test_validator_rejects_mode_mismatch_cdn_tab_entity_svg_image_and_placeholders(self):
         approval_html = renderer.render_report(self._example("approval"), "approval")
         errors_mismatch, _ = validator.validate_html(approval_html, expected_mode="handoff")
         self.assertTrue(any("模式不匹配" in err for err in errors_mismatch))
 
-        cdn_html = approval_html.replace("</head>", '<link href="https://cdn.tailwindcss.com/test.css"></head>')
-        errors_cdn, _ = validator.validate_html(cdn_html, expected_mode="approval")
-        self.assertTrue(any("外网" in err or "CDN" in err for err in errors_cdn))
+        for bad_snippet in (
+            '<link href="https://cdn.tailwindcss.com/test.css">',
+            '<script src="//example.org/report.js"></script>',
+            '<script src=//example.org/report.js></script>',
+            '<img src="https:&#9;//example.org/pixel.png">',
+            '<svg><image href="https://example.org/pixel.png" width="1" height="1"/></svg>',
+            '<svg><use xlink:href="https://example.org/sprite.svg#icon"/></svg>',
+            '<style>@import url("//example.org/a.css");</style>',
+        ):
+            with self.subTest(bad_snippet=bad_snippet):
+                errs, _ = validator.validate_html(approval_html.replace("</head>", bad_snippet + "</head>"), expected_mode="approval")
+                self.assertTrue(any("外网" in err or "CSS" in err for err in errs), errs)
 
         placeholder_html = approval_html + "<div>{{UNRESOLVED_SLOT}}</div>"
         errors_ph, _ = validator.validate_html(placeholder_html, expected_mode="approval")
         self.assertTrue(any("占位符" in err for err in errors_ph))
 
-    def test_skill_md_links_dual_mode_reference_and_respects_line_limit(self):
+    def test_validator_allows_domain_mentions_in_prose_and_same_doc_svg_fragments(self):
+        data = copy.deepcopy(self._example("handoff"))
+        data["prs"][0]["summary"] = "Remove unpkg.com dependency and drop cdnjs.cloudflare.com ref"
+        clean_html = renderer.render_report(data, "handoff")
+        with_local_svg_use = clean_html.replace("</body>", '<svg><use href="#local-def"/></svg></body>')
+        errs_clean, warns_clean = validator.validate_html(with_local_svg_use, expected_mode="handoff")
+        self.assertEqual(errs_clean, [])
+        self.assertEqual(warns_clean, [])
+
+    def test_validator_checks_mandatory_dimensions_with_void_inputs_and_briefing_gaps(self):
+        approval_html = renderer.render_report(self._example("approval"), "approval")
+        broken_approval = approval_html.replace("解锁效果与残余卡点", "缺失维度占位")
+        errs_a, _ = validator.validate_html(broken_approval, expected_mode="approval")
+        self.assertTrue(any("缺少必填维度" in e for e in errs_a), errs_a)
+
+        briefing_html = renderer.render_report(self._example("briefing"), "briefing")
+        broken_briefing = briefing_html.replace("核心卡点 / 债务", "缺失维度占位")
+        errs_b, _ = validator.validate_html(broken_briefing, expected_mode="briefing")
+        self.assertTrue(any("缺少必填维度" in e for e in errs_b), errs_b)
+
+    def test_skill_md_links_schema_and_respects_line_limit(self):
         skill_md = (SKILL / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("references/dual-mode-handoff.md", skill_md)
-        self.assertTrue((SKILL / "references" / "dual-mode-handoff.md").is_file())
+        self.assertIn("references/data-schema.md", skill_md)
+        self.assertTrue((SKILL / "references" / "data-schema.md").is_file())
         self.assertLessEqual(len(skill_md.splitlines()), 100)
 
-    def test_approval_gate_honors_authorized_field(self):
+    def test_approval_gate_honors_authorized_field_and_rejects_null_criterion(self):
         data = copy.deepcopy(self._example("approval"))
         data["gates"] = [{
             "id": "G-AUTH",
@@ -102,37 +133,12 @@ class DualModeReportTests(unittest.TestCase):
         self.assertIn("门禁 1/1", html_out)
         self.assertIn("- [已授权] Test Authorized Gate（G-AUTH）", html_out)
 
-    def test_criterion_none_raises_value_error(self):
-        data = copy.deepcopy(self._example("approval"))
-        data["criteria"][0]["target_and_status"] = None
+        bad = copy.deepcopy(self._example("approval"))
+        bad["criteria"][0]["target_and_status"] = None
         with self.assertRaises(ValueError):
-            renderer.render_report(data, "approval")
+            renderer.render_report(bad, "approval")
 
-    def test_validator_rejects_protocol_relative_urls_and_allows_domain_mentions_in_prose(self):
-        approval_html = renderer.render_report(self._example("approval"), "approval")
-        for bad_tag in (
-            '<script src="//example.org/report.js"></script>',
-            '<script src=//example.org/report.js></script>',
-            '<style>@import url("//example.org/a.css");</style>',
-        ):
-            with self.subTest(bad_tag=bad_tag):
-                errs, _ = validator.validate_html(approval_html.replace("</head>", bad_tag + "</head>"), expected_mode="approval")
-                self.assertTrue(any("外网" in e or "CSS" in e for e in errs), errs)
-
-        data = copy.deepcopy(self._example("handoff"))
-        data["prs"][0]["summary"] = "Remove unpkg.com dependency and drop cdnjs.cloudflare.com ref"
-        clean_html = renderer.render_report(data, "handoff")
-        errs_clean, warns_clean = validator.validate_html(clean_html, expected_mode="handoff")
-        self.assertEqual(errs_clean, [])
-        self.assertEqual(warns_clean, [])
-
-    def test_validator_checks_mandatory_dimensions_inside_approval_cards_with_void_inputs(self):
-        approval_html = renderer.render_report(self._example("approval"), "approval")
-        broken_html = approval_html.replace("解锁效果与残余卡点", "缺失维度占位")
-        errs, _ = validator.validate_html(broken_html, expected_mode="approval")
-        self.assertTrue(any("缺少必填维度" in e for e in errs), errs)
-
-    def test_approval_template_hardening_and_keyboard_topology(self):
+    def test_templates_hardening_keyboard_topology_filter_and_prompt_mode_normalization(self):
         approval_html = renderer.render_report(self._example("approval"), "approval")
         self.assertNotIn("warnEl.innerHTML", approval_html)
         self.assertIn("document.createTextNode(", approval_html)
@@ -141,7 +147,6 @@ class DualModeReportTests(unittest.TestCase):
         self.assertIn('tabindex="0" role="button"', approval_html)
         self.assertIn("e.key === 'Enter' || e.key === ' '", approval_html)
 
-    def test_handoff_template_blocked_filter_includes_deferred_and_stringifies_prompt_modes(self):
         data = copy.deepcopy(self._example("handoff"))
         data["prompt"]["modes"] = [
             {"id": 1, "label": "Mode 1", "instructions": "Run mode 1"},
@@ -152,6 +157,10 @@ class DualModeReportTests(unittest.TestCase):
         self.assertIn("(state.filterStatus === 'blocked' && st === 'deferred')", handoff_html)
         self.assertIn("String(m.id) === String(state.promptMode)", handoff_html)
         self.assertIn('data-prompt-mode="2" aria-pressed="true"', handoff_html)
+
+        briefing_html = renderer.render_report(self._example("briefing"), "briefing")
+        self.assertIn('class="arch-node"', briefing_html)
+        self.assertIn('tabindex="0" role="button"', briefing_html)
 
 
 if __name__ == "__main__":

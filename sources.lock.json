@@ -80,7 +80,24 @@
           "tests/test_report_navigation.py",
           "skills/report-for-human/examples/behavior-changes.json"
         ],
-        "modified_at": "2026-11-09",
+        "modified_at": "2026-11-24",
+        "v2_1_unified_interactive_revision": {
+          "issue": 77,
+          "base_commit": "fbe28225e9438423bbeeb50c93ac31f85eb32777",
+          "scope": "Retire all legacy Piano/operations/static report formats and standardize on report-for-human@v2.1.0 interactive 3-mode HTML templates (approval, handoff, briefing)",
+          "active_templates": [
+            "skills/report-for-human/templates/approval_report.html",
+            "skills/report-for-human/templates/handoff_report.html",
+            "skills/report-for-human/templates/briefing_report.html"
+          ],
+          "active_scripts": [
+            "skills/report-for-human/scripts/render_report.py",
+            "skills/report-for-human/scripts/validate_report.py",
+            "skills/report-for-human/scripts/resolve_report_path.py",
+            "skills/report-for-human/scripts/classify_diff_size.py",
+            "skills/report-for-human/scripts/validate_independent_review.py"
+          ]
+        },
         "previous_local_name": "explain-diff-for-human-review",
         "local_revision": {
           "base_repository": "amazing-fish/agent-skills",

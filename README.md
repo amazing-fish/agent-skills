@@ -44,22 +44,15 @@ skills/
 
 ### report-for-human
 
-由 `explain-diff-for-human-review` 重构。用户不理解改动、要求、现状或责任边界时直接触发；新 PR 创建后主动生成 HTML，并随审查事实变化更新。
+由 `explain-diff-for-human-review` 演进重构为 **`report-for-human@v2.1.0`**，彻底废止旧版静态长表与运维范例，统一采用单文件、零外部 CDN、支持 `浅色 / 深色 / 系统` 三态主题的交互式 3-Tab HTML5 汇报体系：
 
-保留蓝色生成器，新增来自用户认可报告的米白与墨绿运维范例；模板内容均为虚构，不代表真实部署或验收结果。优先沿用读者已认可的阅读顺序与关系图。
-
-两套范例共用跟随系统／浅色／深色三态选择和文件位置复制：首次默认浅色，手动选择后记忆；选择跟随系统后实时响应系统主题；最终生成时绑定真实绝对路径，从托管预览打开也复制来源文件位置。复制失败时显示可选中路径。复制或移动运维模板后，运行 `skills/report-for-human/scripts/add_report_controls.py --input <report.html>` 重新绑定交付路径；跨环境路径用 `--source-path` 显式指定。
-
-- 四类主问题：改动前后对照、要求与验收关系、阶段与卡点、机制与责任图。纯讲解不虚构 PR 或合入判断。
-- 共用主题、布局、生成器、四份去项目化 JSON 示例和完整 HTML/预览，让其他 Agent 复现同一视觉语言；先取证，再填写呈现数据。
-- 默认只展示当前决定、必要事实与下一步；真实前后行为、功能/交互代价与回退条件常显，详细证据折叠。tabs 仅用于同级方案/业务对照，保留明暗主题、窄屏、键盘和打印。
-- 保留固定版本证据、可选独立只读审查和合入授权边界；报告不执行外部操作。
-- 业务决策提供对应实际截图；缺图时保留文字证据、判断限制和待补事项，后续探索/复测前查阅原记录并提醒补采，核对截图前不关闭。详见[截图与补采](skills/report-for-human/references/evidence.md#截图与补采)。
-- 定义：[skills/report-for-human/SKILL.md](skills/report-for-human/SKILL.md)
-- 视觉锚点：[完整样例](skills/report-for-human/assets/reference-report.html) · [预览](skills/report-for-human/assets/reference-preview.png)
-- 运维锚点：[完整样例](skills/report-for-human/assets/operations-report.html) · [预览](skills/report-for-human/assets/operations-preview.png)
-- 原始来源：[GitHubxsy/agent-skills](https://github.com/GitHubxsy/agent-skills/tree/main/skills/explain-diff-for-human-review)，原 blob `110c9dd9e30d278edbfc30fc6bac05cdf4e4afd3`；Apache-2.0，见 `sources.lock.json`。
-- 本地修订：#2/#3 输出与大差异、#7 固定证据、#10 独立审查、#15 主题、#23 精简判断、#51 图解、[#53](../../issues/53) 汇报入口与视觉基线重构。
+- **Mode A（`approval`）**：PR 勾选批准、可点击/键盘操作 SVG 堆叠依赖拓扑、前置门禁开关、3 要素判据签字矩阵与跨 Tab 实时同步回执。
+- **Mode B（`handoff`）**：合入落盘汇报、冲突解决高亮条、状态筛选 Pills、关键字搜索、门禁落盘审计与下一环动态启动 Prompt。
+- **Mode C（`briefing`）**：系统分层架构图（SVG + 差距分析卡）、资产与能力重审计筛选、使用能力/跨端矩阵与分阶段演进路线。
+- 共用确定性 CLI：`skills/report-for-human/scripts/render_report.py --mode <approval|handoff|briefing>` 与 `skills/report-for-human/scripts/validate_report.py`。
+- 严格遵守零外链/零凭据外传/GitHub diff 仅保留永久链接与可选只读独立审查规则；汇报本身不授予实现或合入权限。
+- 定义：[skills/report-for-human/SKILL.md](skills/report-for-human/SKILL.md) · 数据契约：[skills/report-for-human/references/data-schema.md](skills/report-for-human/references/data-schema.md)
+- 原始来源：[GitHubxsy/agent-skills](https://github.com/GitHubxsy/agent-skills/tree/main/skills/explain-diff-for-human-review)，Apache-2.0，演进记录见 `sources.lock.json`。
 
 ### execute-github-issue-pr-workflow
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="generator" content="report-for-human@v2.0.0">
+  <meta name="generator" content="report-for-human@v2.1.0">
   <title>{{PAGE_TITLE}}</title>
   <script>
     (function () {
@@ -1328,7 +1328,7 @@
       <span>{{PROJECT_NAME}} · Mode A 审批态汇报 · 生成时间：{{GENERATED_AT}}</span>
     </div>
     <div>
-      <span class="watermark">report-for-human@v2.0.0</span>
+      <span class="watermark">report-for-human@v2.1.0</span>
     </div>
   </footer>
 
@@ -1483,7 +1483,7 @@
         var heldCriteria = criteria.filter(function (c) { return !state.signedCriteria.has(String(c.id)); });
 
         var lines = [];
-        lines.push('【审批回执 · report-for-human@v2.0.0】');
+        lines.push('【审批回执 · report-for-human@v2.1.0】');
         lines.push('项目：' + (meta.project_name || '未命名项目'));
         lines.push('锚定 main HEAD：' + (meta.main_head_sha || 'N/A') + (meta.main_head_url ? ' (' + meta.main_head_url + ')' : ''));
         lines.push('审批模式：Mode A（审批态 Approval）');
