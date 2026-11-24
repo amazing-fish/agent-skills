@@ -1,0 +1,216 @@
+{
+  "mode": "handoff",
+  "meta": {
+    "project_name": "example-org/sample-vpd",
+    "report_title": "Wave-3 合入落盘完成与内网工作机交接报告",
+    "report_subtitle": "3/4 项批准 PR 已落盘至最新 main，1 处堆叠冲突已安全解决，PR #104 继续阻塞守护；可直接启动 Step 3",
+    "generated_at": "2026-11-20 03:15:00 +0800",
+    "main_head_sha": "c4e91f0b772a318d",
+    "main_head_short": "c4e91f0b",
+    "main_head_url": "https://github.com/example-org/sample-vpd/commit/c4e91f0b772a318d"
+  },
+  "steps": [
+    {
+      "actor": "人类决策者",
+      "status": "done",
+      "status_label": "已完成",
+      "title": "完成审批勾选与前置门禁授权回执",
+      "description": "已批准 PR #101/#102/#103 与判据 C01 签字，保留 PR #104 / C02 阻塞守护。",
+      "dependency": "已完成并归档"
+    },
+    {
+      "actor": "云端执行机",
+      "status": "done",
+      "status_label": "已落盘",
+      "title": "完成按序合入、冲突解决与判据签字落盘",
+      "description": "3 项批准 PR 全部合入 main（新 HEAD c4e91f0b），Issue #51 已写入签字结论，CI 全绿。",
+      "dependency": "已完成；主干已推送至 origin/main"
+    },
+    {
+      "actor": "内网工作机",
+      "status": "active",
+      "status_label": "当前步骤",
+      "title": "复制 Tab 3 动态 Prompt 启动内网同步与残余卡点验证",
+      "description": "按需选择执行模式与任务模块，点击顶部或 Tab 3 一键复制按钮直接下发给内网工作机。",
+      "dependency": "前置 Step 1/2 已全部满足，现在可立即执行"
+    }
+  ],
+  "kpis": [
+    {
+      "label": "PR 合入完成比",
+      "value": "3 / 4",
+      "subtext": "3 项已合入 main · 1 项按决策守护",
+      "tone": "success"
+    },
+    {
+      "label": "冲突解决与守护",
+      "value": "1 解 / 1 守",
+      "subtext": "#103 rebase 冲突已解 · #104 保持阻塞",
+      "tone": "warning"
+    },
+    {
+      "label": "判据落盘结果",
+      "value": "1 签 / 1 留",
+      "subtext": "C01 已签字关闭 · C02 待内网补测",
+      "tone": "accent"
+    },
+    {
+      "label": "最新 main HEAD",
+      "value": "c4e91f0b",
+      "subtext": "已推送远端 · 点击直达 Commit",
+      "mono": true,
+      "url": "https://github.com/example-org/sample-vpd/commit/c4e91f0b772a318d"
+    }
+  ],
+  "conflicts": {
+    "has_conflicts": true,
+    "summary": "合入堆叠顶层 PR #103 时在 src/cli/output.py 出现 1 处上下文行冲突（因 #102 新增快照头字段所致），已在云端完成 rebase 解决并通过全量 CI。",
+    "items": [
+      {
+        "pr_label": "PR #103",
+        "url": "https://github.com/example-org/sample-vpd/pull/103",
+        "resolution": "保留 #102 的 main_head_sha 输出字段，并套用 #103 的 UTF-8 显式编码包装；Windows/Linux 双矩阵 CI 12/12 通过。",
+        "commit_sha": "c4e91f0b",
+        "commit_url": "https://github.com/example-org/sample-vpd/commit/c4e91f0b772a318d"
+      }
+    ]
+  },
+  "prs": [
+    {
+      "id": "pr-101",
+      "number": 101,
+      "title": "feat(core): 引入只读快照哈希锚定接口",
+      "url": "https://github.com/example-org/sample-vpd/pull/101",
+      "head_branch": "feat/snapshot-anchor",
+      "base_branch": "main",
+      "status": "merged",
+      "status_label": "已合入 Merged",
+      "ci_status": "主干 CI 12/12 绿灯",
+      "merge_commit_sha": "91a04bc211223344",
+      "merge_commit_url": "https://github.com/example-org/sample-vpd/commit/91a04bc211223344",
+      "summary": "干净 squash 合入 main，无冲突，作为本轮堆叠基座。"
+    },
+    {
+      "id": "pr-102",
+      "number": 102,
+      "title": "feat(sync): 跨机状态同步增加快照一致性校验",
+      "url": "https://github.com/example-org/sample-vpd/pull/102",
+      "head_branch": "feat/sync-verify",
+      "base_branch": "main",
+      "status": "merged",
+      "status_label": "已合入 Merged",
+      "ci_status": "主干 CI 12/12 绿灯",
+      "merge_commit_sha": "b77d81ef99887766",
+      "merge_commit_url": "https://github.com/example-org/sample-vpd/commit/b77d81ef99887766",
+      "summary": "在 #101 合入后自动变基并干净合入，跨机校验逻辑已生效。"
+    },
+    {
+      "id": "pr-103",
+      "number": 103,
+      "title": "fix(cli): 修正 Windows 路径下回执编码转义",
+      "url": "https://github.com/example-org/sample-vpd/pull/103",
+      "head_branch": "fix/win-utf8-receipt",
+      "base_branch": "main",
+      "status": "conflict_resolved",
+      "status_label": "冲突已解并合入",
+      "ci_status": "主干 CI 12/12 绿灯",
+      "merge_commit_sha": "c4e91f0b772a318d",
+      "merge_commit_url": "https://github.com/example-org/sample-vpd/commit/c4e91f0b772a318d",
+      "summary": "解决 src/cli/output.py 上下文冲突后合入 main，推进主干至最终锚点 c4e91f0b。",
+      "conflict_note": "冲突文件：src/cli/output.py；策略：同时保留 #102 的 HEAD 字段与 #103 的 UTF-8 编码修复，已重跑双平台测试全绿。"
+    },
+    {
+      "id": "pr-104",
+      "number": 104,
+      "title": "perf(io): 启用零拷贝批处理通道",
+      "url": "https://github.com/example-org/sample-vpd/pull/104",
+      "head_branch": "perf/zero-copy-batch",
+      "base_branch": "main",
+      "status": "blocked",
+      "status_label": "阻塞守护（未合入）",
+      "ci_status": "待内网真机压测",
+      "summary": "严格按审批回执保持未合入状态，等待内网工作机完成 C02 压测数据补采后进入下一轮审批。"
+    }
+  ],
+  "gates": [
+    {
+      "id": "GATE-MERGE-EXEC",
+      "title": "云端合入与判据签字落盘授权",
+      "description": "已依据审批回执授权完成 3 项 PR 合入及 Issue #51 签字落盘，未触碰未批准的 PR #104。",
+      "url": "https://github.com/example-org/sample-vpd/issues/50",
+      "authorized": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": "c01",
+      "code": "C01",
+      "title": "快照哈希锚定与跨机一致性判据",
+      "url": "https://github.com/example-org/sample-vpd/issues/51",
+      "link_label": "Issue #51 签字记录",
+      "status": "signed",
+      "status_label": "已签字落盘",
+      "target_and_status": "对应 Issue #51 与已合入 PR #101/#102/#103；签字评论与 approved 标签已落盘，主干 CI 全绿。",
+      "ruling": "以跨机交接强制校验 main HEAD SHA 一致性为放行口径，确保内网工作机与云端状态严格对齐。",
+      "unlock_and_blockers": "已完全解锁 Step 3 内网工作机同步与验收流程；无云端残余卡点。"
+    },
+    {
+      "id": "c02",
+      "code": "C02",
+      "title": "零拷贝批处理通道稳定性门禁",
+      "url": "https://github.com/example-org/sample-vpd/issues/52",
+      "link_label": "Issue #52 守护状态",
+      "status": "guarded",
+      "status_label": "阻塞守护中",
+      "target_and_status": "对应 Issue #52 与未合入 PR #104；按审批回执保持 open 与 do-not-merge 守护标签。",
+      "ruling": "要求内网标准压测集下 P99 延迟不劣化且 30 分钟内无内存持续攀升，方可解除门禁。",
+      "unlock_and_blockers": "当前保护主干不受未验证 I/O 改动影响；残余卡点需内网工作机执行 Tab 3 模块 m3 补采纯文本指标。"
+    }
+  ],
+  "prompt": {
+    "target_machine": "内网工作机",
+    "default_mode": "full_handoff",
+    "preamble": "云端机已完成 Wave-3 批准项落盘，远端 origin/main 已更新至 c4e91f0b（合入 #101/#102/#103，#104 继续守护）。",
+    "zero_artifact_constraint": "额外严禁外传原始 UI 树 JSON、设备序列号、明文凭据或关键命令原始附件。",
+    "modes": [
+      {
+        "id": "full_handoff",
+        "label": "完整交接启动",
+        "instructions": "先拉取并核对 main HEAD = c4e91f0b，再按顺序执行所有已勾选验证与补采模块。"
+      },
+      {
+        "id": "smoke_only",
+        "label": "仅主干快速冒烟",
+        "instructions": "仅验证最新 main（c4e91f0b）基础同步与 Windows UTF-8 冒烟，不执行耗时的 PR #104 压测。"
+      },
+      {
+        "id": "c02_benchmark",
+        "label": "专攻 C02 残余卡点",
+        "instructions": "聚焦 PR #104 内网压测数据采集，为下一轮审批提供可核验 P50/P99 与内存指标。"
+      }
+    ],
+    "modules": [
+      {
+        "id": "m1",
+        "title": "同步主干至 c4e91f0b 并执行一致性自检",
+        "description": "确认本地 main 与云端落盘 SHA 完全一致",
+        "default_checked": true,
+        "prompt_text": "在 PowerShell 中逐条执行并检查 `$LASTEXITCODE`：git fetch origin; if ($LASTEXITCODE -ne 0) { throw 'git fetch failed' }; git checkout main; if ($LASTEXITCODE -ne 0) { throw 'git checkout main failed' }; git pull --ff-only origin main; if ($LASTEXITCODE -ne 0) { throw 'git pull failed' }; $head = git rev-parse HEAD; if ($LASTEXITCODE -ne 0) { throw 'rev-parse HEAD failed' }; $expected = git rev-parse c4e91f0b772a318d; if ($LASTEXITCODE -ne 0) { throw 'rev-parse expected failed' }; if ($head -ne $expected) { throw 'HEAD mismatch' }; git diff --quiet; if ($LASTEXITCODE -ne 0) { throw 'dirty tracked worktree' }; git diff --cached --quiet; if ($LASTEXITCODE -ne 0) { throw 'dirty index' }，确认无误后再执行快照校验并汇报退出码。"
+      },
+      {
+        "id": "m2",
+        "title": "复核 #103 冲突解决后的 Windows UTF-8 冒烟",
+        "description": "验证 src/cli/output.py 冲突合入后的实际表现",
+        "default_checked": true,
+        "prompt_text": "在 PowerShell 下运行 CLI 回执生成冒烟测试，核验 main_head_sha 字段与中文编码输出正常，汇报测试通过数。"
+      },
+      {
+        "id": "m3",
+        "title": "补采 PR #104 / C02 内网压测指标",
+        "description": "解锁下一轮审批所需的 P99 与峰值 RSS 证据",
+        "default_checked": true,
+        "prompt_text": "在独立 worktree 检出 PR #104 分支执行内网压测脚本，仅以 Markdown 表格输出基线与改动后的 P50/P99 延迟、吞吐量与峰值 RSS。"
+      }
+    ]
+  }
+}

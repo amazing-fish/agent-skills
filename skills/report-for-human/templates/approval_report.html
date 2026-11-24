@@ -1,0 +1,1821 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="system" data-report-mode="approval">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="generator" content="report-for-human@v2.1.0">
+  <title>{{PAGE_TITLE}}</title>
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('rfh-theme-v2');
+        if (saved === 'light' || saved === 'dark' || saved === 'system') {
+          document.documentElement.setAttribute('data-theme', saved);
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    :root {
+      --bg-canvas: #f4f6f9;
+      --bg-surface: #ffffff;
+      --bg-subtle: #f8fafc;
+      --bg-elevated: #ffffff;
+      --bg-code: #0f172a;
+      --text-code: #e2e8f0;
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #64748b;
+      --border-default: #e2e8f0;
+      --border-strong: #cbd5e1;
+      --accent: #4f46e5;
+      --accent-hover: #4338ca;
+      --accent-soft: #eef2ff;
+      --accent-border: #c7d2fe;
+      --success: #059669;
+      --success-soft: #ecfdf5;
+      --success-border: #a7f3d0;
+      --warning: #d97706;
+      --warning-soft: #fffbeb;
+      --warning-border: #fde68a;
+      --danger: #dc2626;
+      --danger-soft: #fef2f2;
+      --danger-border: #fecaca;
+      --info: #0284c7;
+      --info-soft: #f0f9ff;
+      --info-border: #bae6fd;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+      --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.07);
+      --shadow-sticky: 0 4px 16px rgba(15, 23, 42, 0.08);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    }
+
+    html[data-theme="dark"] {
+      --bg-canvas: #0b1120;
+      --bg-surface: #111827;
+      --bg-subtle: #182234;
+      --bg-elevated: #1e293b;
+      --bg-code: #020617;
+      --text-code: #e2e8f0;
+      --text-primary: #f1f5f9;
+      --text-secondary: #cbd5e1;
+      --text-muted: #94a3b8;
+      --border-default: #243044;
+      --border-strong: #334155;
+      --accent: #818cf8;
+      --accent-hover: #6366f1;
+      --accent-soft: rgba(99, 102, 241, 0.16);
+      --accent-border: rgba(129, 140, 248, 0.35);
+      --success: #34d399;
+      --success-soft: rgba(16, 185, 129, 0.14);
+      --success-border: rgba(52, 211, 153, 0.35);
+      --warning: #fbbf24;
+      --warning-soft: rgba(245, 158, 11, 0.14);
+      --warning-border: rgba(251, 191, 36, 0.35);
+      --danger: #f87171;
+      --danger-soft: rgba(239, 68, 68, 0.14);
+      --danger-border: rgba(248, 113, 113, 0.35);
+      --info: #38bdf8;
+      --info-soft: rgba(14, 165, 233, 0.14);
+      --info-border: rgba(56, 189, 248, 0.35);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.4);
+      --shadow-sticky: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      html[data-theme="system"] {
+        --bg-canvas: #0b1120;
+        --bg-surface: #111827;
+        --bg-subtle: #182234;
+        --bg-elevated: #1e293b;
+        --bg-code: #020617;
+        --text-code: #e2e8f0;
+        --text-primary: #f1f5f9;
+        --text-secondary: #cbd5e1;
+        --text-muted: #94a3b8;
+        --border-default: #243044;
+        --border-strong: #334155;
+        --accent: #818cf8;
+        --accent-hover: #6366f1;
+        --accent-soft: rgba(99, 102, 241, 0.16);
+        --accent-border: rgba(129, 140, 248, 0.35);
+        --success: #34d399;
+        --success-soft: rgba(16, 185, 129, 0.14);
+        --success-border: rgba(52, 211, 153, 0.35);
+        --warning: #fbbf24;
+        --warning-soft: rgba(245, 158, 11, 0.14);
+        --warning-border: rgba(251, 191, 36, 0.35);
+        --danger: #f87171;
+        --danger-soft: rgba(239, 68, 68, 0.14);
+        --danger-border: rgba(248, 113, 113, 0.35);
+        --info: #38bdf8;
+        --info-soft: rgba(14, 165, 233, 0.14);
+        --info-border: rgba(56, 189, 248, 0.35);
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+        --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.4);
+        --shadow-sticky: 0 4px 20px rgba(0, 0, 0, 0.5);
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--font-sans);
+      background: var(--bg-canvas);
+      color: var(--text-primary);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+
+    button, input, textarea {
+      font-family: inherit;
+    }
+
+    /* Sticky Top Control Bar */
+    .sticky-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-default);
+      box-shadow: var(--shadow-sticky);
+      backdrop-filter: blur(10px);
+    }
+
+    .sticky-inner {
+      max-width: 1260px;
+      margin: 0 auto;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .brand-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .project-name {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--text-primary);
+    }
+
+    .mode-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: var(--accent-soft);
+      color: var(--accent);
+      border: 1px solid var(--accent-border);
+    }
+
+    .head-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-default);
+      color: var(--text-secondary);
+    }
+    .head-pill a {
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .controls-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .live-counter {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      background: var(--warning-soft);
+      color: var(--warning);
+      border: 1px solid var(--warning-border);
+    }
+
+    .theme-switcher {
+      display: inline-flex;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .theme-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .theme-btn:hover { color: var(--text-primary); }
+    .theme-btn[aria-pressed="true"] {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      box-shadow: var(--shadow-sm);
+      font-weight: 600;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border-strong);
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      transition: all 0.15s ease;
+    }
+    .btn:hover { background: var(--bg-subtle); }
+    .btn:focus-visible, .tab-btn:focus-visible, .theme-btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-hover);
+    }
+    .btn-sm {
+      padding: 5px 10px;
+      font-size: 12px;
+    }
+
+    /* Main Container */
+    .container {
+      max-width: 1260px;
+      margin: 0 auto;
+      padding: 20px 20px 48px;
+    }
+
+    .hero-header {
+      margin-bottom: 18px;
+    }
+    .hero-title {
+      margin: 0 0 6px;
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.3;
+    }
+    .hero-subtitle {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    /* 3-Step Sequence Bar */
+    .step-bar {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .step-card {
+      position: relative;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-sm);
+    }
+    .step-card.step-active {
+      border-color: var(--accent);
+      background: linear-gradient(180deg, var(--accent-soft) 0%, var(--bg-surface) 100%);
+      box-shadow: 0 0 0 1px var(--accent-border), var(--shadow-md);
+    }
+    .step-card.step-done {
+      border-color: var(--success-border);
+      background: var(--bg-surface);
+    }
+    .step-card.step-pending {
+      opacity: 0.9;
+    }
+
+    .step-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .step-num {
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .step-done .step-num { color: var(--success); }
+    .step-pending .step-num { color: var(--text-muted); }
+
+    .step-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border-default);
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+    }
+    .step-active .step-badge {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+    .step-done .step-badge {
+      background: var(--success-soft);
+      border-color: var(--success-border);
+      color: var(--success);
+    }
+
+    .step-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0 0 4px;
+      color: var(--text-primary);
+    }
+    .step-desc {
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      margin: 0 0 6px;
+    }
+    .step-dep {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      padding-top: 6px;
+      border-top: 1px dashed var(--border-default);
+    }
+
+    /* 4-Card KPI Overview */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .kpi-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .kpi-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .kpi-value {
+      font-size: 24px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+      line-height: 1.25;
+    }
+    .kpi-value.mono {
+      font-family: var(--font-mono);
+      font-size: 20px;
+    }
+    .kpi-tone-success .kpi-value { color: var(--success); }
+    .kpi-tone-warning .kpi-value { color: var(--warning); }
+    .kpi-tone-danger .kpi-value { color: var(--danger); }
+    .kpi-tone-accent .kpi-value { color: var(--accent); }
+    .kpi-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* 3-Tab Isolated View */
+    .tabs-nav {
+      display: flex;
+      gap: 6px;
+      border-bottom: 2px solid var(--border-default);
+      margin-bottom: 18px;
+      overflow-x: auto;
+    }
+    .tab-btn {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn[aria-selected="true"] {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    .tab-count {
+      font-size: 11px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      padding: 1px 7px;
+      border-radius: 999px;
+      background: var(--bg-subtle);
+      color: var(--text-muted);
+      border: 1px solid var(--border-default);
+    }
+    .tab-btn[aria-selected="true"] .tab-count {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-color: var(--accent-border);
+    }
+
+    .tab-panel[hidden] { display: none; }
+    .print-section-heading { display: none; }
+
+    /* Cards & Sections */
+    .panel-section {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      margin-bottom: 18px;
+      box-shadow: var(--shadow-sm);
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .section-title {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .section-hint {
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+
+    /* SVG Dependency Topology */
+    .topology-wrap {
+      overflow-x: auto;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: 12px;
+    }
+    .topology-svg {
+      display: block;
+      margin: 0 auto;
+      max-width: 100%;
+      height: auto;
+    }
+    .dag-node { cursor: pointer; }
+    .dag-node rect {
+      transition: stroke 0.15s, fill 0.15s, stroke-width 0.15s;
+    }
+    .dag-node.is-approved rect {
+      stroke: var(--success) !important;
+      stroke-width: 2.4 !important;
+    }
+    .dag-node.is-unapproved rect {
+      stroke: var(--border-strong);
+      stroke-dasharray: 4 3;
+    }
+    .dag-legend {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 3px;
+      margin-right: 5px;
+      vertical-align: -1px;
+    }
+
+    /* Batch Bar & Alerts */
+    .batch-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 10px 14px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      margin-bottom: 14px;
+    }
+    .batch-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .callout {
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      margin-bottom: 14px;
+      border: 1px solid var(--border-default);
+    }
+    .callout-warning {
+      background: var(--warning-soft);
+      border-color: var(--warning-border);
+      color: var(--text-primary);
+    }
+    .callout-danger {
+      background: var(--danger-soft);
+      border-color: var(--danger-border);
+      color: var(--text-primary);
+    }
+    .callout-info {
+      background: var(--info-soft);
+      border-color: var(--info-border);
+      color: var(--text-primary);
+    }
+    .callout[hidden] { display: none; }
+
+    /* PR Approval Cards */
+    .card-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .pr-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-left: 4px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    }
+    .pr-card.is-selected {
+      border-left-color: var(--success);
+      border-color: var(--success-border);
+      border-left-width: 4px;
+    }
+    .pr-card.is-pulse {
+      box-shadow: 0 0 0 3px var(--accent-border);
+    }
+
+    .pr-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .pr-check-label {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+      flex: 1;
+      min-width: 240px;
+    }
+    .pr-check-label input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin-top: 3px;
+      accent-color: var(--accent);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .pr-id-link {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      font-size: 13.5px;
+      margin-right: 6px;
+    }
+    .pr-title-text {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .badge-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 600;
+      border: 1px solid var(--border-default);
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+    }
+    .badge-success {
+      background: var(--success-soft);
+      border-color: var(--success-border);
+      color: var(--success);
+    }
+    .badge-warning {
+      background: var(--warning-soft);
+      border-color: var(--warning-border);
+      color: var(--warning);
+    }
+    .badge-danger {
+      background: var(--danger-soft);
+      border-color: var(--danger-border);
+      color: var(--danger);
+    }
+    .badge-accent {
+      background: var(--accent-soft);
+      border-color: var(--accent-border);
+      color: var(--accent);
+    }
+
+    .pr-meta {
+      margin: 8px 0 6px 28px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 12.5px;
+      color: var(--text-muted);
+    }
+    .pr-meta code {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: var(--bg-subtle);
+      padding: 1px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border-default);
+      color: var(--text-secondary);
+    }
+    .pr-summary {
+      margin: 6px 0 0 28px;
+      font-size: 13.5px;
+      color: var(--text-secondary);
+    }
+    .pr-details {
+      margin: 8px 0 0 28px;
+      font-size: 13px;
+    }
+    .pr-details summary {
+      cursor: pointer;
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 12.5px;
+    }
+    .pr-details-body {
+      margin-top: 8px;
+      padding: 10px 12px;
+      background: var(--bg-subtle);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-default);
+      color: var(--text-secondary);
+    }
+
+    /* Prerequisite Gate Switch Card */
+    .gate-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .gate-card {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 14px 16px;
+      border-radius: var(--radius-md);
+      background: var(--warning-soft);
+      border: 1px solid var(--warning-border);
+    }
+    .gate-card.is-authorized {
+      background: var(--success-soft);
+      border-color: var(--success-border);
+    }
+    .gate-info {
+      flex: 1;
+      min-width: 240px;
+    }
+    .gate-title {
+      font-size: 14.5px;
+      font-weight: 700;
+      margin: 0 0 4px;
+      color: var(--text-primary);
+    }
+    .gate-desc {
+      margin: 0;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .switch-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      user-select: none;
+    }
+    .switch-input {
+      position: relative;
+      width: 46px;
+      height: 26px;
+      appearance: none;
+      -webkit-appearance: none;
+      background: var(--border-strong);
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+    .switch-input::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+      transition: transform 0.2s;
+    }
+    .switch-input:checked {
+      background: var(--success);
+    }
+    .switch-input:checked::after {
+      transform: translateX(20px);
+    }
+
+    /* Criteria Sign-off Cards (3 Mandatory Structured Blocks) */
+    .criteria-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-default);
+      border-left: 4px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      padding: 16px;
+    }
+    .criteria-card.is-signed {
+      border-left-color: var(--success);
+      border-color: var(--success-border);
+      border-left-width: 4px;
+    }
+    .criteria-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .criteria-check {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+      flex: 1;
+      min-width: 240px;
+    }
+    .criteria-check input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin-top: 3px;
+      accent-color: var(--success);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .criteria-code {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 800;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      margin-right: 6px;
+    }
+    .criteria-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .criteria-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .criteria-box {
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+    }
+    .criteria-box-label {
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }
+    .criteria-box-body {
+      font-size: 13px;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    /* Cross-Tab Synced Receipt Panel (Mandatory in Tab 1 & Tab 2) */
+    .receipt-panel {
+      margin-top: 20px;
+      background: var(--bg-surface);
+      border: 2px solid var(--accent-border);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+      box-shadow: var(--shadow-md);
+    }
+    .receipt-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .receipt-note-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .receipt-note-row label {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+    .receipt-note-input {
+      flex: 1;
+      min-width: 220px;
+      padding: 7px 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong);
+      background: var(--bg-subtle);
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+    .code-preview {
+      width: 100%;
+      margin: 0;
+      padding: 14px 16px;
+      border-radius: var(--radius-md);
+      background: var(--bg-code);
+      color: var(--text-code);
+      font-family: var(--font-mono);
+      font-size: 12.5px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-x: auto;
+      border: 1px solid var(--border-strong);
+    }
+    .receipt-textarea {
+      min-height: 190px;
+      resize: vertical;
+    }
+
+    /* Tab 3 Prompt Generator */
+    .mode-switch-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    .prompt-mode-btn {
+      padding: 7px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong);
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .prompt-mode-btn[aria-pressed="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .module-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-default);
+      background: var(--bg-subtle);
+      cursor: pointer;
+    }
+    .module-item input {
+      margin-top: 3px;
+      accent-color: var(--accent);
+      flex-shrink: 0;
+    }
+    .module-title {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .module-desc {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .constraint-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      background: var(--danger-soft);
+      border: 1px solid var(--danger-border);
+      color: var(--text-primary);
+      font-size: 12.5px;
+      margin-bottom: 12px;
+    }
+
+    /* Footer */
+    .report-footer {
+      max-width: 1260px;
+      margin: 0 auto;
+      padding: 18px 20px 32px;
+      border-top: 1px solid var(--border-default);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .watermark {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: var(--text-secondary);
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--bg-subtle);
+      border: 1px solid var(--border-default);
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 999;
+      padding: 10px 16px;
+      border-radius: var(--radius-md);
+      background: #0f172a;
+      color: #f8fafc;
+      font-size: 13px;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+      opacity: 0;
+      transform: translateY(10px);
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+    }
+    .toast.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Responsive */
+    @media (max-width: 960px) {
+      .step-bar { grid-template-columns: 1fr; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .criteria-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 600px) {
+      .sticky-inner { padding: 10px 12px; }
+      .container { padding: 14px 12px 36px; }
+      .kpi-grid { grid-template-columns: 1fr; }
+      .hero-title { font-size: 20px; }
+    }
+
+    /* Print Stylesheet */
+    @media print {
+      :root, html[data-theme="dark"], html[data-theme="system"] {
+        --bg-canvas: #ffffff;
+        --bg-surface: #ffffff;
+        --bg-subtle: #f8fafc;
+        --bg-code: #f8fafc;
+        --text-code: #0f172a;
+        --text-primary: #0f172a;
+        --text-secondary: #334155;
+        --text-muted: #475569;
+        --border-default: #cbd5e1;
+        --border-strong: #94a3b8;
+      }
+      body { background: #ffffff; }
+      .sticky-bar { position: static; box-shadow: none; }
+      .theme-switcher, .btn, .batch-bar, .tabs-nav, .toast, .receipt-note-row { display: none !important; }
+      .tab-panel[hidden] { display: block !important; }
+      .print-section-heading {
+        display: block;
+        margin: 18px 0 10px;
+        padding-bottom: 4px;
+        border-bottom: 2px solid #0f172a;
+        font-size: 16px;
+        font-weight: 800;
+      }
+      .pr-card, .criteria-card, .kpi-card, .step-card, .receipt-panel {
+        break-inside: avoid;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- 1. Sticky Top Control Bar -->
+  <header class="sticky-bar" data-rfh-role="sticky-bar">
+    <div class="sticky-inner">
+      <div class="brand-group">
+        <span class="project-name">{{PROJECT_NAME}}</span>
+        <span class="mode-pill">Mode A · 审批态 Approval</span>
+        <span class="head-pill">
+          main HEAD:
+          <a href="{{MAIN_HEAD_URL}}" target="_blank" rel="noopener noreferrer">{{MAIN_HEAD_SHORT}}</a>
+        </span>
+      </div>
+      <div class="controls-group">
+        <span class="live-counter" id="sticky-counter" aria-live="polite">{{INITIAL_COUNTER_TEXT}}</span>
+        <div class="theme-switcher" role="group" aria-label="主题切换">
+          <button type="button" class="theme-btn" data-theme-value="light" aria-pressed="false">浅色</button>
+          <button type="button" class="theme-btn" data-theme-value="dark" aria-pressed="false">深色</button>
+          <button type="button" class="theme-btn" data-theme-value="system" aria-pressed="true">系统</button>
+        </div>
+        <button type="button" class="btn btn-primary" id="global-copy-btn">一键复制最新回执</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="hero-header">
+      <h1 class="hero-title">{{REPORT_TITLE}}</h1>
+      <p class="hero-subtitle">{{REPORT_SUBTITLE}} · 取证时间：{{GENERATED_AT}}</p>
+    </section>
+
+    <!-- 2. Explicit 3-Step Sequence Bar -->
+    <section class="step-bar" data-rfh-role="step-bar" aria-label="执行顺序指引">
+      {{SSR_STEPS_HTML}}
+    </section>
+
+    <!-- 3. 4-Card KPI Overview -->
+    <section class="kpi-grid" data-rfh-role="kpi-grid" aria-label="核心指标概览">
+      {{SSR_KPI_HTML}}
+    </section>
+
+    <!-- 4. 3-Tab Isolated Views -->
+    <nav class="tabs-nav" role="tablist" aria-label="汇报视图切换">
+      <button type="button" class="tab-btn" role="tab" id="tab-btn-1" aria-controls="tab-panel-1" aria-selected="true" data-tab="1">
+        <span>Tab 1 · PR 审批与堆叠拓扑</span>
+        <span class="tab-count" id="tab-count-1">{{TAB1_COUNT}}</span>
+      </button>
+      <button type="button" class="tab-btn" role="tab" id="tab-btn-2" aria-controls="tab-panel-2" aria-selected="false" data-tab="2">
+        <span>Tab 2 · 判据签字与门禁授权</span>
+        <span class="tab-count" id="tab-count-2">{{TAB2_COUNT}}</span>
+      </button>
+      <button type="button" class="tab-btn" role="tab" id="tab-btn-3" aria-controls="tab-panel-3" aria-selected="false" data-tab="3">
+        <span>Tab 3 · 下一环启动 Prompt（预备）</span>
+        <span class="tab-count" id="tab-count-3">{{TAB3_COUNT}}</span>
+      </button>
+    </nav>
+
+    <!-- TAB 1: PR Details + SVG Topology + Synced Receipt -->
+    <section class="tab-panel" role="tabpanel" id="tab-panel-1" aria-labelledby="tab-btn-1" data-rfh-role="tab-panel" data-tab-index="1">
+      <h2 class="print-section-heading">Tab 1 · PR 审批明细与堆叠依赖拓扑</h2>
+
+      <div class="panel-section" data-rfh-role="svg-topology">
+        <div class="section-header">
+          <h3 class="section-title">PR 堆叠依赖拓扑（SVG）</h3>
+          <span class="section-hint">点击节点可定位对应 PR；勾选审批后节点边框实时同步为绿色</span>
+        </div>
+        <div class="topology-wrap">
+          {{SSR_SVG_TOPOLOGY}}
+        </div>
+        <div class="dag-legend">
+          <span><i class="legend-dot" style="background: var(--accent);"></i>主干锚点 main HEAD</span>
+          <span><i class="legend-dot" style="background: var(--success);"></i>已勾选批准</span>
+          <span><i class="legend-dot" style="background: var(--warning);"></i>待核验 / 有风险</span>
+          <span><i class="legend-dot" style="background: var(--danger);"></i>阻塞 / 暂缓</span>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="section-header">
+          <h3 class="section-title">PR 审批明细</h3>
+          <span class="section-hint" id="pr-selection-summary">{{PR_SELECTION_SUMMARY}}</span>
+        </div>
+
+        <div class="batch-bar" data-rfh-role="pr-batch-bar">
+          <div class="batch-actions">
+            <button type="button" class="btn btn-sm" data-batch-pr="recommended">恢复推荐勾选</button>
+            <button type="button" class="btn btn-sm" data-batch-pr="ready">全选可合入</button>
+            <button type="button" class="btn btn-sm" data-batch-pr="all">全选全部</button>
+            <button type="button" class="btn btn-sm" data-batch-pr="none">清空选择</button>
+          </div>
+          <span class="section-hint">勾选结果与 Tab 2 判据签字实时联动生成回执</span>
+        </div>
+
+        <div class="callout callout-warning" id="stack-warning" hidden></div>
+
+        <div class="card-list" id="pr-card-list">
+          {{SSR_PR_LIST_HTML}}
+        </div>
+      </div>
+
+      <!-- Mandatory Cross-Tab Synced Receipt Box (Tab 1 Bottom) -->
+      <div class="receipt-panel" data-rfh-role="synced-receipt" data-receipt-slot="tab1">
+        <div class="receipt-header">
+          <div>
+            <h3 class="section-title">实时审批回执（与 Tab 2 及顶栏全局同步）</h3>
+            <span class="section-hint">当前共 <strong class="receipt-char-count">{{INITIAL_RECEIPT_CHARS}}</strong> 字符 · 无需切换 Tab，直接复制发回云端机执行</span>
+          </div>
+          <button type="button" class="btn btn-primary copy-receipt-btn">一键复制审批回执</button>
+        </div>
+        <div class="receipt-note-row">
+          <label for="receipt-note-tab1">附加审批备注（可选）：</label>
+          <input type="text" id="receipt-note-tab1" class="receipt-note-input" placeholder="例如：合并后先跑 smoke test 再发交接报告">
+        </div>
+        <textarea class="code-preview receipt-textarea receipt-preview" readonly aria-label="Tab 1 实时审批回执">{{SSR_RECEIPT_INITIAL}}</textarea>
+      </div>
+    </section>
+
+    <!-- TAB 2: Criteria Sign-off Matrix + Gate Switch + Synced Receipt -->
+    <section class="tab-panel" role="tabpanel" id="tab-panel-2" aria-labelledby="tab-btn-2" data-rfh-role="tab-panel" data-tab-index="2" hidden>
+      <h2 class="print-section-heading">Tab 2 · 判据签字矩阵与前置门禁授权</h2>
+
+      {{SSR_GATES_SECTION_HTML}}
+
+      <div class="panel-section">
+        <div class="section-header">
+          <h3 class="section-title">Issue / 判据签字矩阵</h3>
+          <span class="section-hint" id="criteria-selection-summary">{{CRITERIA_SELECTION_SUMMARY}}</span>
+        </div>
+
+        <div class="batch-bar">
+          <div class="batch-actions">
+            <button type="button" class="btn btn-sm" data-batch-criteria="recommended">恢复推荐签字</button>
+            <button type="button" class="btn btn-sm" data-batch-criteria="all">全部批准签字</button>
+            <button type="button" class="btn btn-sm" data-batch-criteria="none">清空签字</button>
+          </div>
+          <span class="section-hint">每条判据均明确列出对应对象与现状、具体口径与作用、解锁效果与残余卡点</span>
+        </div>
+
+        <div class="card-list" id="criteria-card-list">
+          {{SSR_CRITERIA_HTML}}
+        </div>
+      </div>
+
+      <!-- Mandatory Cross-Tab Synced Receipt Box (Tab 2 Bottom) -->
+      <div class="receipt-panel" data-rfh-role="synced-receipt" data-receipt-slot="tab2">
+        <div class="receipt-header">
+          <div>
+            <h3 class="section-title">实时审批回执（与 Tab 1 及顶栏全局同步）</h3>
+            <span class="section-hint">当前共 <strong class="receipt-char-count">{{INITIAL_RECEIPT_CHARS}}</strong> 字符 · 签字与门禁变更已实时写入下方回执</span>
+          </div>
+          <button type="button" class="btn btn-primary copy-receipt-btn">一键复制审批回执</button>
+        </div>
+        <div class="receipt-note-row">
+          <label for="receipt-note-tab2">附加审批备注（可选）：</label>
+          <input type="text" id="receipt-note-tab2" class="receipt-note-input" placeholder="例如：合并后先跑 smoke test 再发交接报告">
+        </div>
+        <textarea class="code-preview receipt-textarea receipt-preview" readonly aria-label="Tab 2 实时审批回执">{{SSR_RECEIPT_INITIAL}}</textarea>
+      </div>
+    </section>
+
+    <!-- TAB 3: Next-Stage Launch Prompt Preview -->
+    <section class="tab-panel" role="tabpanel" id="tab-panel-3" aria-labelledby="tab-btn-3" data-rfh-role="tab-panel" data-tab-index="3" hidden>
+      <h2 class="print-section-heading">Tab 3 · 下一环启动 Prompt（预备）</h2>
+
+      <div class="callout callout-info">
+        <strong>顺序提醒：</strong>当前处于 <strong>Mode A · 审批态</strong>。请先执行 <strong>Step 1</strong> 复制并发送审批回执给云端执行机，待云端合入落盘并给出交接报告后，再按下方参数启动下一环。
+      </div>
+
+      <div class="panel-section">
+        <div class="section-header">
+          <div>
+            <h3 class="section-title">下一环启动 Prompt 配置与实时预览</h3>
+            <span class="section-hint">支持执行模式切换与任务模块勾选，实时重算文本与字符数</span>
+          </div>
+          <button type="button" class="btn btn-primary" id="copy-prompt-btn">一键复制下一环 Prompt</button>
+        </div>
+
+        <div class="mode-switch-row" role="group" aria-label="执行模式切换">
+          {{SSR_PROMPT_MODES_HTML}}
+        </div>
+
+        <div class="module-grid" id="prompt-modules-grid">
+          {{SSR_PROMPT_MODULES_HTML}}
+        </div>
+
+        <div class="constraint-strip" data-rfh-role="zero-artifact-constraint">
+          <span><strong>硬性回传约束（已锁定）：</strong>{{ZERO_ARTIFACT_CONSTRAINT}}</span>
+          <span>实时字符数：<strong id="prompt-char-count">{{INITIAL_PROMPT_CHARS}}</strong> 字符</span>
+        </div>
+
+        <pre class="code-preview" id="prompt-preview">{{SSR_PROMPT_INITIAL}}</pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="report-footer">
+    <div>
+      <span>{{PROJECT_NAME}} · Mode A 审批态汇报 · 生成时间：{{GENERATED_AT}}</span>
+    </div>
+    <div>
+      <span class="watermark">report-for-human@v2.1.0</span>
+    </div>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script id="report-data" type="application/json">{{REPORT_DATA_JSON}}</script>
+  <script>
+    (function () {
+      'use strict';
+
+      var dataEl = document.getElementById('report-data');
+      var DATA = dataEl ? JSON.parse(dataEl.textContent) : {};
+
+      var state = {
+        approvedPrs: new Set(),
+        signedCriteria: new Set(),
+        enabledGates: new Set(),
+        note: '',
+        promptMode: (DATA.prompt && DATA.prompt.default_mode != null)
+          ? String(DATA.prompt.default_mode)
+          : ((DATA.prompt && DATA.prompt.modes && DATA.prompt.modes[0] && DATA.prompt.modes[0].id != null) ? String(DATA.prompt.modes[0].id) : 'default'),
+        selectedModules: new Set()
+      };
+
+      (DATA.prs || []).forEach(function (pr) {
+        if (pr.default_checked) state.approvedPrs.add(String(pr.id));
+      });
+      (DATA.criteria || []).forEach(function (c) {
+        if (c.default_checked) state.signedCriteria.add(String(c.id));
+      });
+      (DATA.gates || []).forEach(function (g) {
+        var enabled = Object.prototype.hasOwnProperty.call(g, 'authorized') ? Boolean(g.authorized) : Boolean(g.default_enabled);
+        if (enabled) state.enabledGates.add(String(g.id));
+      });
+      ((DATA.prompt && DATA.prompt.modules) || []).forEach(function (m) {
+        if (m.default_checked !== false) state.selectedModules.add(String(m.id));
+      });
+
+      /* Theme Switcher (light / dark / system) */
+      var themeBtns = document.querySelectorAll('.theme-btn');
+      function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        try { localStorage.setItem('rfh-theme-v2', theme); } catch (e) {}
+        themeBtns.forEach(function (btn) {
+          btn.setAttribute('aria-pressed', btn.getAttribute('data-theme-value') === theme ? 'true' : 'false');
+        });
+      }
+      applyTheme(document.documentElement.getAttribute('data-theme') || 'system');
+      themeBtns.forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          applyTheme(btn.getAttribute('data-theme-value'));
+        });
+      });
+
+      /* Toast & Robust Dual-Path Clipboard Copy */
+      var toastTimer = null;
+      function showToast(msg) {
+        var el = document.getElementById('toast');
+        if (!el) return;
+        el.textContent = msg;
+        el.classList.add('is-visible');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () {
+          el.classList.remove('is-visible');
+        }, 2600);
+      }
+
+      function fallbackCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-9999px';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        var ok = false;
+        try {
+          ok = document.execCommand('copy');
+        } catch (err) {
+          ok = false;
+        }
+        document.body.removeChild(ta);
+        return ok;
+      }
+
+      function copyText(text, label) {
+        var successMsg = label + '已复制（共 ' + text.length + ' 字符）';
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).then(function () {
+            showToast(successMsg);
+          }).catch(function () {
+            if (fallbackCopy(text)) {
+              showToast(successMsg);
+            } else {
+              showToast('自动复制被浏览器拦截，请手动选中文本框按 Ctrl+C 复制');
+            }
+          });
+        } else {
+          if (fallbackCopy(text)) {
+            showToast(successMsg);
+          } else {
+            showToast('自动复制被浏览器拦截，请手动选中文本框按 Ctrl+C 复制');
+          }
+        }
+      }
+
+      /* 3-Tab Isolation + Keyboard Navigation */
+      var tabBtns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
+      var tabPanels = Array.prototype.slice.call(document.querySelectorAll('.tab-panel'));
+      function activateTab(idx) {
+        tabBtns.forEach(function (btn) {
+          var active = btn.getAttribute('data-tab') === String(idx);
+          btn.setAttribute('aria-selected', active ? 'true' : 'false');
+          btn.setAttribute('tabindex', active ? '0' : '-1');
+        });
+        tabPanels.forEach(function (panel) {
+          var active = panel.getAttribute('data-tab-index') === String(idx);
+          if (active) panel.removeAttribute('hidden');
+          else panel.setAttribute('hidden', '');
+        });
+      }
+      tabBtns.forEach(function (btn, i) {
+        btn.addEventListener('click', function () {
+          activateTab(btn.getAttribute('data-tab'));
+        });
+        btn.addEventListener('keydown', function (e) {
+          var next = null;
+          if (e.key === 'ArrowRight') next = (i + 1) % tabBtns.length;
+          else if (e.key === 'ArrowLeft') next = (i - 1 + tabBtns.length) % tabBtns.length;
+          else if (e.key === 'Home') next = 0;
+          else if (e.key === 'End') next = tabBtns.length - 1;
+          if (next !== null) {
+            e.preventDefault();
+            tabBtns[next].focus();
+            activateTab(tabBtns[next].getAttribute('data-tab'));
+          }
+        });
+      });
+
+      /* Receipt Builder */
+      function buildReceipt() {
+        var meta = DATA.meta || {};
+        var prs = DATA.prs || [];
+        var criteria = DATA.criteria || [];
+        var gates = DATA.gates || [];
+
+        var approvedList = prs.filter(function (p) { return state.approvedPrs.has(String(p.id)); });
+        var deferredList = prs.filter(function (p) { return !state.approvedPrs.has(String(p.id)); });
+        var signedList = criteria.filter(function (c) { return state.signedCriteria.has(String(c.id)); });
+        var heldCriteria = criteria.filter(function (c) { return !state.signedCriteria.has(String(c.id)); });
+
+        var lines = [];
+        lines.push('【审批回执 · report-for-human@v2.1.0】');
+        lines.push('项目：' + (meta.project_name || '未命名项目'));
+        lines.push('锚定 main HEAD：' + (meta.main_head_sha || 'N/A') + (meta.main_head_url ? ' (' + meta.main_head_url + ')' : ''));
+        lines.push('审批模式：Mode A（审批态 Approval）');
+        lines.push('');
+
+        if (gates.length > 0) {
+          lines.push('一、前置门禁授权：');
+          gates.forEach(function (g) {
+            var on = state.enabledGates.has(String(g.id));
+            lines.push('- [' + (on ? '已授权' : '未授权') + '] ' + g.title + '（' + g.id + '）');
+          });
+          lines.push('');
+        }
+
+        lines.push('二、批准合入的 PR（' + approvedList.length + '/' + prs.length + '）：');
+        if (approvedList.length === 0) {
+          lines.push('- （无：本轮暂不批准任何 PR 合入）');
+        } else {
+          approvedList.forEach(function (p) {
+            lines.push('- [APPROVE] #' + p.number + ' ' + p.title + ' | ' + p.url);
+          });
+        }
+        if (deferredList.length > 0) {
+          lines.push('暂缓/不合入 PR（' + deferredList.length + '）：');
+          deferredList.forEach(function (p) {
+            lines.push('- [HOLD] #' + p.number + ' ' + p.title);
+          });
+        }
+        lines.push('');
+
+        lines.push('三、判据签字裁决（' + signedList.length + '/' + criteria.length + '）：');
+        if (signedList.length === 0) {
+          lines.push('- （无：本轮暂不签字任何判据）');
+        } else {
+          signedList.forEach(function (c) {
+            lines.push('- [SIGN-OFF] ' + c.code + ' ' + c.title + '（口径：' + c.ruling + '）');
+          });
+        }
+        if (heldCriteria.length > 0) {
+          lines.push('暂缓/继续阻塞判据（' + heldCriteria.length + '）：');
+          heldCriteria.forEach(function (c) {
+            lines.push('- [KEEP-OPEN] ' + c.code + ' ' + c.title + '（残余卡点：' + c.unlock_and_blockers + '）');
+          });
+        }
+
+        if (state.note && state.note.trim()) {
+          lines.push('');
+          lines.push('四、人工附加备注：');
+          lines.push(state.note.trim());
+        }
+
+        lines.push('');
+        lines.push('执行约束：请严格按上述勾选与授权执行合入与签字落盘；完成后输出 Mode B（Handoff）交接报告并锚定最新 main HEAD。');
+        return lines.join('\n');
+      }
+
+      /* Prompt Builder (Tab 3) */
+      function buildPrompt() {
+        var meta = DATA.meta || {};
+        var promptCfg = DATA.prompt || {};
+        var modes = promptCfg.modes || [];
+        var activeMode = modes.find(function (m) { return String(m.id) === String(state.promptMode); }) || modes[0] || { label: '标准执行', instructions: '' };
+        var modules = (promptCfg.modules || []).filter(function (m) { return state.selectedModules.has(String(m.id)); });
+        var constraint = promptCfg.zero_artifact_constraint || '零图片/零文件回传约束：严禁回传截图、图片或二进制附件文件，仅以结构化纯文本/Markdown 汇报执行结果、命令输出摘要与 GitHub 链接。';
+
+        var lines = [];
+        lines.push('# 下一环启动指令（' + (promptCfg.target_machine || '内网工作机') + '）');
+        lines.push('');
+        lines.push('- 项目：' + (meta.project_name || ''));
+        lines.push('- 前置基准 main HEAD：' + (meta.main_head_sha || '') + '（需先确认云端机已按审批回执完成落盘并更新到最新 main）');
+        lines.push('- 执行模式：' + activeMode.label);
+        lines.push('- 当前已勾选拟批准 PR 数：' + state.approvedPrs.size + '/' + (DATA.prs || []).length);
+        lines.push('');
+        if (promptCfg.preamble) {
+          lines.push('## 背景与前置条件');
+          lines.push(promptCfg.preamble);
+          lines.push('');
+        }
+        if (activeMode.instructions) {
+          lines.push('## 模式要求');
+          lines.push(activeMode.instructions);
+          lines.push('');
+        }
+        lines.push('## 本轮勾选任务模块（' + modules.length + ' 项）');
+        if (modules.length === 0) {
+          lines.push('- （未勾选任何模块，请至少勾选 1 项执行任务）');
+        } else {
+          modules.forEach(function (m, idx) {
+            lines.push((idx + 1) + '. **' + m.title + '**：' + (m.prompt_text || m.description || ''));
+          });
+        }
+        lines.push('');
+        lines.push('## 强制回传约束');
+        lines.push('- ' + constraint);
+        return lines.join('\n');
+      }
+
+      /* Stack Dependency Validation */
+      function checkStackDependencies() {
+        var warnEl = document.getElementById('stack-warning');
+        if (!warnEl) return;
+        var prs = DATA.prs || [];
+        var byId = {};
+        prs.forEach(function (p) { byId[String(p.id)] = p; });
+        var issues = [];
+        prs.forEach(function (p) {
+          if (!state.approvedPrs.has(String(p.id))) return;
+          (p.depends_on || []).forEach(function (depId) {
+            var dep = byId[String(depId)];
+            if (dep && !state.approvedPrs.has(String(dep.id))) {
+              issues.push('#' + p.number + ' 依赖前置 #' + dep.number + '（当前未勾选）');
+            }
+          });
+        });
+        if (issues.length > 0) {
+          warnEl.textContent = '';
+          var strongEl = document.createElement('strong');
+          strongEl.textContent = '堆叠依赖提醒：';
+          warnEl.appendChild(strongEl);
+          warnEl.appendChild(document.createTextNode(issues.join('；') + '。请确认是否需同步勾选前置 PR，避免合入顺序冲突。'));
+          warnEl.removeAttribute('hidden');
+        } else {
+          warnEl.setAttribute('hidden', '');
+          warnEl.textContent = '';
+        }
+      }
+
+      /* Full Reactive Sync */
+      function syncAll() {
+        var prs = DATA.prs || [];
+        var criteria = DATA.criteria || [];
+        var gates = DATA.gates || [];
+        var dagNodesById = {};
+        document.querySelectorAll('.dag-node[data-svg-pr-id]').forEach(function (node) {
+          dagNodesById[node.getAttribute('data-svg-pr-id')] = node;
+        });
+
+        /* Sync PR checkboxes, cards & SVG nodes */
+        document.querySelectorAll('.pr-checkbox').forEach(function (cb) {
+          var id = cb.getAttribute('data-pr-id');
+          var checked = state.approvedPrs.has(id);
+          cb.checked = checked;
+          var card = cb.closest('.pr-card');
+          if (card) card.classList.toggle('is-selected', checked);
+          var svgNode = dagNodesById[id];
+          if (svgNode) {
+            svgNode.classList.toggle('is-approved', checked);
+            svgNode.classList.toggle('is-unapproved', !checked);
+          }
+        });
+
+        /* Sync Gate switches */
+        document.querySelectorAll('.gate-toggle').forEach(function (sw) {
+          var id = sw.getAttribute('data-gate-id');
+          var on = state.enabledGates.has(id);
+          sw.checked = on;
+          var card = sw.closest('.gate-card');
+          if (card) card.classList.toggle('is-authorized', on);
+          var statusText = card ? card.querySelector('.gate-status-label') : null;
+          if (statusText) statusText.textContent = on ? '已授权' : '未授权';
+        });
+
+        /* Sync Criteria checkboxes */
+        document.querySelectorAll('.criterion-checkbox').forEach(function (cb) {
+          var id = cb.getAttribute('data-criterion-id');
+          var checked = state.signedCriteria.has(id);
+          cb.checked = checked;
+          var card = cb.closest('.criteria-card');
+          if (card) card.classList.toggle('is-signed', checked);
+        });
+
+        /* Sync Counters */
+        var gatePart = gates.length > 0 ? ' · 门禁 ' + state.enabledGates.size + '/' + gates.length : '';
+        var counterEl = document.getElementById('sticky-counter');
+        if (counterEl) {
+          counterEl.textContent = '已批 PR ' + state.approvedPrs.size + '/' + prs.length + ' · 签字 ' + state.signedCriteria.size + '/' + criteria.length + gatePart;
+        }
+        var prSum = document.getElementById('pr-selection-summary');
+        if (prSum) prSum.textContent = '已勾选 ' + state.approvedPrs.size + ' / ' + prs.length + ' 个 PR';
+        var crSum = document.getElementById('criteria-selection-summary');
+        if (crSum) crSum.textContent = '已签字 ' + state.signedCriteria.size + ' / ' + criteria.length + ' 项判据';
+
+        checkStackDependencies();
+
+        /* Sync Cross-Tab Receipt Boxes (Tab 1 & Tab 2) */
+        var receiptText = buildReceipt();
+        document.querySelectorAll('.receipt-preview').forEach(function (ta) {
+          ta.value = receiptText;
+        });
+        document.querySelectorAll('.receipt-char-count').forEach(function (span) {
+          span.textContent = String(receiptText.length);
+        });
+
+        /* Sync Tab 3 Prompt */
+        document.querySelectorAll('.prompt-mode-btn').forEach(function (btn) {
+          btn.setAttribute('aria-pressed', btn.getAttribute('data-prompt-mode') === String(state.promptMode) ? 'true' : 'false');
+        });
+        document.querySelectorAll('.prompt-module-cb').forEach(function (cb) {
+          cb.checked = state.selectedModules.has(cb.getAttribute('data-module-id'));
+        });
+        var promptText = buildPrompt();
+        var promptPre = document.getElementById('prompt-preview');
+        if (promptPre) promptPre.textContent = promptText;
+        var promptChars = document.getElementById('prompt-char-count');
+        if (promptChars) promptChars.textContent = String(promptText.length);
+      }
+
+      /* Bind Events */
+      document.querySelectorAll('.pr-checkbox').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+          var id = cb.getAttribute('data-pr-id');
+          if (cb.checked) state.approvedPrs.add(id);
+          else state.approvedPrs.delete(id);
+          syncAll();
+        });
+      });
+
+      document.querySelectorAll('[data-batch-pr]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var action = btn.getAttribute('data-batch-pr');
+          state.approvedPrs.clear();
+          (DATA.prs || []).forEach(function (p) {
+            if (action === 'all') state.approvedPrs.add(String(p.id));
+            else if (action === 'ready' && (p.status === 'ready' || p.status === 'approved')) state.approvedPrs.add(String(p.id));
+            else if (action === 'recommended' && p.default_checked) state.approvedPrs.add(String(p.id));
+          });
+          syncAll();
+          showToast('PR 勾选已更新（' + state.approvedPrs.size + '/' + (DATA.prs || []).length + '）');
+        });
+      });
+
+      function focusPrCardFromTopology(node) {
+        var id = node.getAttribute('data-svg-pr-id');
+        var card = document.getElementById('pr-card-' + id);
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.classList.add('is-pulse');
+          setTimeout(function () { card.classList.remove('is-pulse'); }, 1200);
+        }
+      }
+
+      document.querySelectorAll('.dag-node[data-svg-pr-id]').forEach(function (node) {
+        node.addEventListener('click', function () {
+          focusPrCardFromTopology(node);
+        });
+        node.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            focusPrCardFromTopology(node);
+          }
+        });
+      });
+
+      document.querySelectorAll('.gate-toggle').forEach(function (sw) {
+        sw.addEventListener('change', function () {
+          var id = sw.getAttribute('data-gate-id');
+          if (sw.checked) state.enabledGates.add(id);
+          else state.enabledGates.delete(id);
+          syncAll();
+        });
+      });
+
+      document.querySelectorAll('.criterion-checkbox').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+          var id = cb.getAttribute('data-criterion-id');
+          if (cb.checked) state.signedCriteria.add(id);
+          else state.signedCriteria.delete(id);
+          syncAll();
+        });
+      });
+
+      document.querySelectorAll('[data-batch-criteria]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var action = btn.getAttribute('data-batch-criteria');
+          state.signedCriteria.clear();
+          (DATA.criteria || []).forEach(function (c) {
+            if (action === 'all') state.signedCriteria.add(String(c.id));
+            else if (action === 'recommended' && c.default_checked) state.signedCriteria.add(String(c.id));
+          });
+          syncAll();
+          showToast('判据签字已更新（' + state.signedCriteria.size + '/' + (DATA.criteria || []).length + '）');
+        });
+      });
+
+      document.querySelectorAll('.receipt-note-input').forEach(function (inp) {
+        inp.addEventListener('input', function () {
+          state.note = inp.value;
+          document.querySelectorAll('.receipt-note-input').forEach(function (other) {
+            if (other !== inp) other.value = state.note;
+          });
+          syncAll();
+        });
+      });
+
+      document.querySelectorAll('.copy-receipt-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          copyText(buildReceipt(), '最新审批回执');
+        });
+      });
+
+      var globalCopyBtn = document.getElementById('global-copy-btn');
+      if (globalCopyBtn) {
+        globalCopyBtn.addEventListener('click', function () {
+          copyText(buildReceipt(), '最新审批回执');
+        });
+      }
+
+      document.querySelectorAll('.prompt-mode-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          state.promptMode = btn.getAttribute('data-prompt-mode');
+          syncAll();
+        });
+      });
+
+      document.querySelectorAll('.prompt-module-cb').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+          var id = cb.getAttribute('data-module-id');
+          if (cb.checked) state.selectedModules.add(id);
+          else state.selectedModules.delete(id);
+          syncAll();
+        });
+      });
+
+      var copyPromptBtn = document.getElementById('copy-prompt-btn');
+      if (copyPromptBtn) {
+        copyPromptBtn.addEventListener('click', function () {
+          copyText(buildPrompt(), '下一环启动 Prompt');
+        });
+      }
+
+      syncAll();
+    })();
+  </script>
+</body>
+</html>

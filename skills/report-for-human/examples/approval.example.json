@@ -1,0 +1,217 @@
+{
+  "mode": "approval",
+  "meta": {
+    "project_name": "example-org/sample-vpd",
+    "report_title": "Wave-3 堆叠 PR 审批与判据签字决策包",
+    "report_subtitle": "4 项 PR 已过 CI 待批准合入（含 2 层堆叠依赖），1 项阻塞守护暂缓；请先回执云端落盘",
+    "generated_at": "2026-11-20 02:30:00 +0800",
+    "main_head_sha": "8f3c2d1a904e55b7",
+    "main_head_short": "8f3c2d1a",
+    "main_head_url": "https://github.com/example-org/sample-vpd/commit/8f3c2d1a904e55b7"
+  },
+  "steps": [
+    {
+      "actor": "人类决策者",
+      "status": "active",
+      "status_label": "当前步骤",
+      "title": "勾选批准 PR 与判据签字，复制回执发回云端机",
+      "description": "在 Tab 1 审阅堆叠依赖并勾选 PR，在 Tab 2 确认前置门禁开关与判据签字，一键复制回执发回云端。",
+      "dependency": "无前置阻塞；必须先发回执给云端机，严禁跳过 Step 2 直接启动内网工作机"
+    },
+    {
+      "actor": "云端执行机",
+      "status": "pending",
+      "status_label": "等待回执",
+      "title": "按回执顺序合入 PR、解决冲突并完成判据落盘",
+      "description": "收到审批回执后按堆叠顺序执行 rebase/merge，写入 Issue 签字记录并输出 Mode B 交接汇报。",
+      "dependency": "强依赖 Step 1 审批回执与前置门禁授权"
+    },
+    {
+      "actor": "内网工作机",
+      "status": "pending",
+      "status_label": "待交接解锁",
+      "title": "拉取落盘后的新 main HEAD 并执行硬件/内网验证",
+      "description": "使用云端机 Mode B 报告中锚定新 SHA 的动态 Prompt 启动内网验证并纯文本回传结果。",
+      "dependency": "强依赖 Step 2 云端合入落盘完成（需先拿到更新后的 main HEAD）"
+    }
+  ],
+  "kpis": [
+    {
+      "label": "推荐批准 PR",
+      "value": "3 / 4",
+      "subtext": "3 项绿灯可合入 · 1 项阻塞暂缓",
+      "tone": "accent"
+    },
+    {
+      "label": "阻塞守护项",
+      "value": "1",
+      "subtext": "PR #104 待内网真机日志补采",
+      "tone": "warning"
+    },
+    {
+      "label": "待签字判据",
+      "value": "2 项",
+      "subtext": "含 1 项前置门禁联动授权",
+      "tone": "success"
+    },
+    {
+      "label": "锚定 main HEAD",
+      "value": "8f3c2d1a",
+      "subtext": "点击直达 GitHub Commit",
+      "mono": true,
+      "url": "https://github.com/example-org/sample-vpd/commit/8f3c2d1a904e55b7"
+    }
+  ],
+  "prs": [
+    {
+      "id": "pr-101",
+      "number": 101,
+      "title": "feat(core): 引入只读快照哈希锚定接口",
+      "url": "https://github.com/example-org/sample-vpd/pull/101",
+      "head_branch": "feat/snapshot-anchor",
+      "base_branch": "main",
+      "author": "cloud-agent",
+      "diff_stat": "+142 / -18 (4 files)",
+      "ci_status": "CI 12/12 通过",
+      "status": "ready",
+      "status_label": "可合入",
+      "default_checked": true,
+      "depends_on": [],
+      "summary": "为核心状态机增加不可变快照 SHA 输出，作为后续堆叠 PR #102 与 #103 的公共基座。",
+      "notes": "单测覆盖率 96%，无破坏性 API 变更。",
+      "evidence_links": [
+        {
+          "label": "CI Workflow Run #8821",
+          "url": "https://github.com/example-org/sample-vpd/actions/runs/8821"
+        }
+      ]
+    },
+    {
+      "id": "pr-102",
+      "number": 102,
+      "title": "feat(sync): 跨机状态同步增加快照一致性校验",
+      "url": "https://github.com/example-org/sample-vpd/pull/102",
+      "head_branch": "feat/sync-verify",
+      "base_branch": "feat/snapshot-anchor",
+      "author": "cloud-agent",
+      "diff_stat": "+96 / -12 (3 files)",
+      "ci_status": "CI 12/12 通过",
+      "status": "ready",
+      "status_label": "可合入（堆叠）",
+      "default_checked": true,
+      "depends_on": ["pr-101"],
+      "summary": "基于 #101 快照锚点，在内网机拉取前强制校验远端 main HEAD 一致性。",
+      "notes": "合入 #101 后将自动 rebase 到 main。"
+    },
+    {
+      "id": "pr-103",
+      "number": 103,
+      "title": "fix(cli): 修正 Windows 路径下回执编码转义",
+      "url": "https://github.com/example-org/sample-vpd/pull/103",
+      "head_branch": "fix/win-utf8-receipt",
+      "base_branch": "feat/sync-verify",
+      "author": "cloud-agent",
+      "diff_stat": "+44 / -9 (2 files)",
+      "ci_status": "CI 12/12 通过",
+      "status": "ready",
+      "status_label": "可合入（堆叠）",
+      "default_checked": true,
+      "depends_on": ["pr-102"],
+      "summary": "解决 PowerShell 终端输出中文回执时的默认编码偏差问题。",
+      "notes": "已通过 Windows + Linux 双矩阵测试。"
+    },
+    {
+      "id": "pr-104",
+      "number": 104,
+      "title": "perf(io): 启用零拷贝批处理通道",
+      "url": "https://github.com/example-org/sample-vpd/pull/104",
+      "head_branch": "perf/zero-copy-batch",
+      "base_branch": "main",
+      "author": "cloud-agent",
+      "diff_stat": "+230 / -85 (6 files)",
+      "ci_status": "基准测试待内网补采",
+      "status": "blocked",
+      "status_label": "阻塞暂缓",
+      "default_checked": false,
+      "depends_on": ["pr-101"],
+      "summary": "优化高并发吞吐路径，但尚未在真实内网硬件上完成压测回归，建议本轮保持暂缓。",
+      "notes": "保留为阻塞守护项，待 Step 3 内网机补采压测数据后再审批。"
+    }
+  ],
+  "gates": [
+    {
+      "id": "GATE-MERGE-EXEC",
+      "title": "授权云端执行机按序合并已勾选 PR 并回写 Issue 签字标签",
+      "description": "开启后允许云端机对已勾选 PR 执行 squash/rebase merge 并更新关联 Issue 判据状态；关闭则仅做只读预演。",
+      "url": "https://github.com/example-org/sample-vpd/issues/50",
+      "default_enabled": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": "c01",
+      "code": "C01",
+      "title": "快照哈希锚定与跨机一致性判据",
+      "url": "https://github.com/example-org/sample-vpd/issues/51",
+      "link_label": "Issue #51",
+      "default_checked": true,
+      "status_label": "建议签字",
+      "target_and_status": "对应 PR #101、#102 与 Issue #51；双平台 CI 全绿，快照哈希字段已在集成测试中锁定验证。",
+      "ruling": "以“跨机交接必须显式校验 main HEAD SHA 一致性”为强制验收口径，防止内网机在旧提交上误跑测试。",
+      "unlock_and_blockers": "签字后解锁 #101/#102/#103 合入与下游交接；无云端残余卡点，仅待内网机同步后做一次实机抽检。"
+    },
+    {
+      "id": "c02",
+      "code": "C02",
+      "title": "零拷贝批处理通道稳定性门禁",
+      "url": "https://github.com/example-org/sample-vpd/issues/52",
+      "link_label": "Issue #52",
+      "default_checked": false,
+      "status_label": "建议暂缓守护",
+      "target_and_status": "对应 PR #104 与 Issue #52；云端单测通过，但缺少内网真实负载下的尾延迟与内存峰值数据。",
+      "ruling": "要求在内网标准压测集下 P99 延迟不劣化且无内存泄漏，方可放行进入主干。",
+      "unlock_and_blockers": "当前保持阻塞守护以保护主干稳定；残余卡点为 Step 3 内网工作机需补跑 30 分钟压测并纯文本回传指标摘要。"
+    }
+  ],
+  "prompt": {
+    "target_machine": "内网工作机",
+    "default_mode": "standard",
+    "preamble": "本 Prompt 为 Step 3 预备指令，仅在 Step 2 云端机完成合入落盘并更新 main HEAD 后使用。",
+    "zero_artifact_constraint": "零图片/零文件回传约束：严禁回传截图、图片、日志压缩包或任何附件文件，仅以结构化纯文本/Markdown 汇报命令退出码、指标表格与核验结论。",
+    "modes": [
+      {
+        "id": "standard",
+        "label": "标准交接验证",
+        "instructions": "拉取最新 main 后按序执行全部已选模块，输出结构化文本验收表。"
+      },
+      {
+        "id": "blocker_only",
+        "label": "仅补采残余卡点",
+        "instructions": "跳过常规冒烟，聚焦 C02 / PR #104 所需的内网压测指标采集。"
+      }
+    ],
+    "modules": [
+      {
+        "id": "m1",
+        "title": "主干同步与快照哈希抽检",
+        "description": "核验 HEAD SHA 与 #101/#102 一致性检查命令",
+        "default_checked": true,
+        "prompt_text": "执行 git pull --ff-only 同步最新 main，运行快照一致性校验命令并输出 HEAD SHA 与退出码。"
+      },
+      {
+        "id": "m2",
+        "title": "Windows UTF-8 回执冒烟测试",
+        "description": "验证 PR #103 修复后的中文输出不乱码",
+        "default_checked": true,
+        "prompt_text": "在 PowerShell 下运行回执生成冒烟测试，确认中文字符与退出码均正常。"
+      },
+      {
+        "id": "m3",
+        "title": "C02 残余卡点压测数据补采",
+        "description": "针对 PR #104 采集 P99 与峰值内存纯文本指标",
+        "default_checked": false,
+        "prompt_text": "检出 PR #104 分支执行内网压测脚本，仅以 Markdown 表格回传 P50/P99 与峰值 RSS 指标。"
+      }
+    ]
+  }
+}
