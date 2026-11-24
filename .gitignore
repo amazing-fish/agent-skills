@@ -4,6 +4,8 @@
 !skills/report-for-human/assets/reference-report.html
 !skills/report-for-human/assets/operations-report.html
 !skills/report-for-human/examples/navigation.html
+!skills/report-for-human/templates/approval_report.html
+!skills/report-for-human/templates/handoff_report.html
 
 # Credentials and local environment
 .env
