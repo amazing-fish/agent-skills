@@ -9,6 +9,7 @@ Verifies all structural hard constraints and anti-degradation rules for Mode A
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import re
 import sys
@@ -19,6 +20,11 @@ from urllib.parse import urlsplit
 
 
 WATERMARK = "report-for-human@v2.1.0"
+
+CANONICAL_ZERO_ARTIFACT_CONSTRAINT = (
+    "零图片/零文件回传约束：严禁回传截图、图片、压缩包或任何本地附件文件，"
+    "仅以结构化纯文本/Markdown 汇报执行结果、关键命令摘要与可验证 GitHub 链接。"
+)
 
 _VOID_ELEMENTS = frozenset({
     "area", "base", "br", "col", "embed", "hr", "img",
@@ -46,6 +52,7 @@ _CSS_EXTERNAL_URL_RE = re.compile(
 )
 
 PLACEHOLDER_RE = re.compile(r"\{\{[A-Z0-9_]+\}\}")
+_ASCII_WHITESPACE = " \t\n\f\r"
 
 
 def _normalize_url_candidate(raw_val: str) -> str:
@@ -91,40 +98,46 @@ def _is_allowed_resource_url(tag: str, attr_name: str, raw_val: str) -> bool:
 
 
 def _split_srcset_urls(raw_val: str) -> List[str]:
-    candidates: List[str] = []
+    """Tokenize an HTML srcset attribute per WHATWG rules, keeping commas inside URL payloads."""
     s = raw_val or ""
+    n = len(s)
     pos = 0
-    while pos < len(s):
-        while pos < len(s) and s[pos] in " \t\r\n,":
+    urls: List[str] = []
+
+    while pos < n:
+        while pos < n and s[pos] in _ASCII_WHITESPACE + ",":
             pos += 1
-        if pos >= len(s):
+        if pos >= n:
             break
-        if s[pos:].lower().startswith("data:"):
-            comma = s.find(",", pos)
-            if comma == -1:
-                candidates.append(s[pos:])
-                break
-            end = comma + 1
-            while end < len(s) and s[end] not in " \t\r\n,":
-                end += 1
-            candidates.append(s[pos:end])
-            pos = end
-        else:
-            comma = s.find(",", pos)
-            seg = s[pos:] if comma == -1 else s[pos:comma]
-            tok = seg.strip().split(None, 1)[0] if seg.strip() else ""
-            if tok:
-                candidates.append(tok)
-            if comma == -1:
-                break
-            pos = comma + 1
+
+        url_start = pos
+        while pos < n and s[pos] not in _ASCII_WHITESPACE:
+            pos += 1
+        url = s[url_start:pos]
+
+        if url.endswith(","):
+            url = url.rstrip(",")
+            if url:
+                urls.append(url)
             continue
-        if pos < len(s) and s[pos] in " \t\r\n":
-            next_comma = s.find(",", pos)
-            if next_comma == -1:
+
+        if url:
+            urls.append(url)
+
+        # Skip descriptors until a comma separator outside balanced parentheses
+        paren_depth = 0
+        while pos < n:
+            ch = s[pos]
+            if ch == "(":
+                paren_depth += 1
+            elif ch == ")" and paren_depth > 0:
+                paren_depth -= 1
+            elif ch == "," and paren_depth == 0:
+                pos += 1
                 break
-            pos = next_comma + 1
-    return candidates
+            pos += 1
+
+    return urls
 
 
 def _extract_disallowed_attr_urls(tag: str, attr_name: str, raw_val: str) -> List[str]:
@@ -132,6 +145,29 @@ def _extract_disallowed_attr_urls(tag: str, attr_name: str, raw_val: str) -> Lis
         return [tok for tok in _split_srcset_urls(raw_val) if not _is_allowed_resource_url(tag, attr_name, tok)]
     cleaned = _normalize_url_candidate(raw_val)
     return [cleaned] if not _is_allowed_resource_url(tag, attr_name, raw_val) else []
+
+
+def _reject_json_constant(token: str) -> Any:
+    raise ValueError(f"Non-standard JSON constant {token!r} is disallowed")
+
+
+def _collect_prompt_placeholder_budget(parsed: Any) -> Counter[str]:
+    budget: Counter[str] = Counter()
+    if not isinstance(parsed, dict):
+        return budget
+    prompt_obj = parsed.get("prompt")
+    if prompt_obj is None:
+        return budget
+    stack: List[Any] = [prompt_obj]
+    while stack:
+        cur = stack.pop()
+        if isinstance(cur, str):
+            budget.update(PLACEHOLDER_RE.findall(cur))
+        elif isinstance(cur, dict):
+            stack.extend(cur.values())
+        elif isinstance(cur, list):
+            stack.extend(cur)
+    return budget
 
 
 class StructureInspector(HTMLParser):
@@ -180,7 +216,13 @@ class StructureInspector(HTMLParser):
         self.style_parts: List[str] = []
         self.in_report_data = False
         self.report_data_parts: List[str] = []
+
+        self._in_prompt_preview_depth = 0
+        self.prompt_preview_placeholders: List[str] = []
+        self.other_placeholders: List[str] = []
+
         self.external_resources: List[str] = []
+        self.malformed_links: List[str] = []
         self.external_links_missing_attrs: List[str] = []
         self.external_link_count = 0
 
@@ -200,7 +242,19 @@ class StructureInspector(HTMLParser):
         self.gap_card_boxes: List[List[Tuple[str, str]]] = []
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
-        attr_map: Dict[str, str] = {k.lower(): (v or "") for k, v in attrs}
+        attr_map: Dict[str, str] = {}
+        seen_attrs: set[str] = set()
+        for raw_k, raw_v in attrs:
+            k = raw_k.lower()
+            val = raw_v or ""
+            if val:
+                self.other_placeholders.extend(PLACEHOLDER_RE.findall(val))
+            if k in seen_attrs:
+                self.external_resources.append(f"<{tag}> 禁止出现重复属性: {k}")
+            else:
+                seen_attrs.add(k)
+                attr_map[k] = val
+
         cls_tokens = set(attr_map.get("class", "").split())
         rfh_role = attr_map.get("data-rfh-role", "")
         non_void = tag not in _VOID_ELEMENTS
@@ -217,6 +271,11 @@ class StructureInspector(HTMLParser):
             self.in_style = True
         if tag == "script" and attr_map.get("id") == "report-data":
             self.in_report_data = True
+
+        if attr_map.get("id") == "prompt-preview" and non_void and self._in_prompt_preview_depth == 0:
+            self._in_prompt_preview_depth = 1
+        elif self._in_prompt_preview_depth > 0 and non_void:
+            self._in_prompt_preview_depth += 1
 
         if tag == "html":
             self.report_mode = attr_map.get("data-report-mode") or None
@@ -310,13 +369,18 @@ class StructureInspector(HTMLParser):
 
         if tag == "a":
             href = _normalize_url_candidate(attr_map.get("href", ""))
-            parsed_href = urlsplit(href)
-            if parsed_href.scheme.lower() in ("http", "https") and parsed_href.hostname:
-                self.external_link_count += 1
-                target = attr_map.get("target", "").strip()
-                rel_tokens = set(attr_map.get("rel", "").lower().split())
-                if target != "_blank" or "noopener" not in rel_tokens or "noreferrer" not in rel_tokens:
-                    self.external_links_missing_attrs.append(href)
+            if href:
+                try:
+                    parsed_href = urlsplit(href)
+                except ValueError as exc:
+                    self.malformed_links.append(f"存在无效链接 URI ({href!r}): {exc}")
+                else:
+                    if parsed_href.scheme.lower() in ("http", "https") and parsed_href.hostname:
+                        self.external_link_count += 1
+                        target = attr_map.get("target", "").strip()
+                        rel_tokens = set(attr_map.get("rel", "").lower().split())
+                        if target != "_blank" or "noopener" not in rel_tokens or "noreferrer" not in rel_tokens:
+                            self.external_links_missing_attrs.append(href)
 
         if "criteria-card" in cls_tokens and non_void:
             self.criteria_card_count += 1
@@ -356,6 +420,8 @@ class StructureInspector(HTMLParser):
             self.in_footer = False
 
         if non_void:
+            if self._in_prompt_preview_depth > 0:
+                self._in_prompt_preview_depth -= 1
             if self._tab_panel_depth > 0:
                 self._tab_panel_depth -= 1
                 if self._tab_panel_depth == 0:
@@ -398,6 +464,11 @@ class StructureInspector(HTMLParser):
             self.style_parts.append(data)
         if self.in_report_data:
             self.report_data_parts.append(data)
+        elif self._in_prompt_preview_depth > 0:
+            self.prompt_preview_placeholders.extend(PLACEHOLDER_RE.findall(data))
+        else:
+            self.other_placeholders.extend(PLACEHOLDER_RE.findall(data))
+
         if self.in_footer:
             self.footer_text_parts.append(data)
         if self._in_zero_constraint_depth > 0:
@@ -417,43 +488,43 @@ class StructureInspector(HTMLParser):
             if text:
                 self._current_gap_box_body.append(text)
 
-
-def _collect_user_data_placeholders(raw_json: str) -> set[str]:
-    if not raw_json.strip():
-        return set()
-    try:
-        parsed = json.loads(raw_json)
-    except ValueError:
-        return set()
-    tokens: set[str] = set()
-    stack: List[Any] = [parsed]
-    while stack:
-        cur = stack.pop()
-        if isinstance(cur, str):
-            tokens.update(PLACEHOLDER_RE.findall(cur))
-        elif isinstance(cur, dict):
-            stack.extend(cur.values())
-        elif isinstance(cur, list):
-            stack.extend(cur)
-    return tokens
+    def handle_comment(self, data: str) -> None:
+        self.other_placeholders.extend(PLACEHOLDER_RE.findall(data))
 
 
 def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[List[str], List[str]]:
     errors: List[str] = []
     warnings: List[str] = []
 
-    # Parse DOM structure first (zero external CDN/network/file resource check included)
     inspector = StructureInspector()
     inspector.feed(html_text)
     inspector.close()
 
-    # 1. Leftover placeholders check (allow literal user data tokens present in parsed #report-data)
-    user_data_tokens = _collect_user_data_placeholders("".join(inspector.report_data_parts))
-    leftovers = sorted(tok for tok in set(PLACEHOLDER_RE.findall(html_text)) if tok not in user_data_tokens)
-    if leftovers:
-        errors.append(f"遗留未替换占位符: {', '.join(leftovers)}")
+    # 1. Strict JSON check on #report-data + occurrence-specific leftover slot check
+    raw_report_data = "".join(inspector.report_data_parts)
+    parsed_data: Any = None
+    if raw_report_data.strip():
+        try:
+            parsed_data = json.loads(raw_report_data, parse_constant=_reject_json_constant)
+        except ValueError as exc:
+            errors.append(f"#report-data 嵌入手册 JSON 解析失败（或含非标准 NaN/Infinity）: {exc}")
+
+    leftover_tokens: set[str] = set(inspector.other_placeholders)
+    if parsed_data is None:
+        leftover_tokens.update(PLACEHOLDER_RE.findall(raw_report_data))
+        leftover_tokens.update(inspector.prompt_preview_placeholders)
+    else:
+        budget = _collect_prompt_placeholder_budget(parsed_data)
+        preview_counts = Counter(inspector.prompt_preview_placeholders)
+        for tok, count in preview_counts.items():
+            if count > budget[tok]:
+                leftover_tokens.add(tok)
+
+    if leftover_tokens:
+        errors.append(f"遗留未替换占位符: {', '.join(sorted(leftover_tokens))}")
 
     errors.extend(inspector.external_resources)
+    errors.extend(inspector.malformed_links)
     style_text = "\n".join(inspector.style_parts)
     if _CSS_EXTERNAL_URL_RE.search(style_text):
         errors.append("禁止在 CSS 中引用外网 @import 或 url() 资源")
@@ -531,15 +602,10 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
                 if missing_or_empty:
                     errors.append(f"Tab 1 第 {idx} 条架构差距卡片缺少必填维度（或维度块为空）: {', '.join(missing_or_empty)}")
 
-    # Tab 3 zero-image / zero-file return constraint checked inside the marker element & char counter
-    constraint_text = " ".join(inspector.zero_constraint_text_parts)
-    has_zero_prohibition = (
-        inspector.has_zero_artifact_constraint
-        and ("零图片" in constraint_text or "零文件" in constraint_text)
-        and any(tok in constraint_text for tok in ("严禁", "禁止", "不得"))
-    )
-    if not has_zero_prohibition:
-        errors.append("Tab 3 的 zero-artifact-constraint 元素缺少明确的零图片/零文件回传禁止约束标注")
+    # Tab 3 canonical zero-image / zero-file return constraint inside the marker element
+    normalized_constraint = re.sub(r"\s+", " ", " ".join(inspector.zero_constraint_text_parts)).strip()
+    if not (inspector.has_zero_artifact_constraint and CANONICAL_ZERO_ARTIFACT_CONSTRAINT in normalized_constraint):
+        errors.append("Tab 3 的 zero-artifact-constraint 元素缺少完整的规范零图片/零文件回传禁止约束基线")
     if "prompt-char-count" not in html_text:
         errors.append("Tab 3 缺少实时字符数统计 (#prompt-char-count)")
 

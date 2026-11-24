@@ -18,7 +18,7 @@
 - `meta`: `project_name`、`main_head_sha`、`main_head_url`（合法 `http(s)://`）、可选 `main_head_short`、`report_title`、`report_subtitle`、`generated_at`
 - `steps`: 长度必须为 `3`，每项含 `actor`、`status`（`done|active|pending`）、`status_label`、`title`、`description`、`dependency`
 - `kpis`: 长度必须为 `4`，每项含 `label`、`value`、`subtext`，可选 `tone`（`default|accent|success|warning|danger`）、`mono`、`url`
-- `prompt`: `target_machine`、`default_mode`、`preamble`、`zero_artifact_constraint`、`modes[]`（`id` 字符串比较）、`modules[]`。其中 `zero_artifact_constraint` 强制保留并延续基线零图片/零文件回传禁止约束：若自定义覆盖文本遗漏零图片/零文件禁止条款，渲染与拷贝 Prompt 时会自动将基线禁止前缀置于补充说明之前。
+- `prompt`: `target_machine`、`default_mode`、`preamble`、`zero_artifact_constraint`、`modes[]`（`id` 字符串比较）、`modules[]`。其中 `zero_artifact_constraint` 始终作为不可覆盖基线条款（`零图片/零文件回传约束：严禁回传截图、图片、压缩包或任何本地附件文件，仅以结构化纯文本/Markdown 汇报执行结果、关键命令摘要与可验证 GitHub 链接。`）的**补充约束**：无论自定义文本是否包含策略关键词，渲染 HTML 与拷贝 Prompt 均严格保留完整的规范基线条款。
 
 ## 3. 模式专属字段
 

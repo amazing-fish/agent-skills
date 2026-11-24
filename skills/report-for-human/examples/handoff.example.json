@@ -171,7 +171,7 @@
     "target_machine": "内网工作机",
     "default_mode": "full_handoff",
     "preamble": "云端机已完成 Wave-3 批准项落盘，远端 origin/main 已更新至 c4e91f0b（合入 #101/#102/#103，#104 继续守护）。",
-    "zero_artifact_constraint": "零图片/零文件回传约束：严禁回传截图、图片、压缩包或任何本地附件文件，仅以结构化纯文本/Markdown 汇报执行结果、关键命令退出码与指标摘要。",
+    "zero_artifact_constraint": "额外严禁外传原始 UI 树 JSON、设备序列号、明文凭据或关键命令原始附件。",
     "modes": [
       {
         "id": "full_handoff",
@@ -195,7 +195,7 @@
         "title": "同步主干至 c4e91f0b 并执行一致性自检",
         "description": "确认本地 main 与云端落盘 SHA 完全一致",
         "default_checked": true,
-        "prompt_text": "在 PowerShell 中逐条执行并检查 `$LASTEXITCODE`：git fetch origin; if ($LASTEXITCODE -ne 0) { throw 'git fetch failed' }; git checkout main; if ($LASTEXITCODE -ne 0) { throw 'git checkout main failed' }; git pull --ff-only origin main; if ($LASTEXITCODE -ne 0) { throw 'git pull failed' }; $head = git rev-parse HEAD; if ($LASTEXITCODE -ne 0) { throw 'rev-parse HEAD failed' }; $expected = git rev-parse c4e91f0b772a318d; if ($LASTEXITCODE -ne 0) { throw 'rev-parse expected failed' }; if ($head -ne $expected) { throw 'HEAD mismatch' }，确认无误后再执行快照校验并汇报退出码。"
+        "prompt_text": "在 PowerShell 中逐条执行并检查 `$LASTEXITCODE`：git fetch origin; if ($LASTEXITCODE -ne 0) { throw 'git fetch failed' }; git checkout main; if ($LASTEXITCODE -ne 0) { throw 'git checkout main failed' }; git pull --ff-only origin main; if ($LASTEXITCODE -ne 0) { throw 'git pull failed' }; $head = git rev-parse HEAD; if ($LASTEXITCODE -ne 0) { throw 'rev-parse HEAD failed' }; $expected = git rev-parse c4e91f0b772a318d; if ($LASTEXITCODE -ne 0) { throw 'rev-parse expected failed' }; if ($head -ne $expected) { throw 'HEAD mismatch' }; git diff --quiet; if ($LASTEXITCODE -ne 0) { throw 'dirty tracked worktree' }; git diff --cached --quiet; if ($LASTEXITCODE -ne 0) { throw 'dirty index' }，确认无误后再执行快照校验并汇报退出码。"
       },
       {
         "id": "m2",

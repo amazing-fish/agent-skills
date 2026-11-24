@@ -20,31 +20,25 @@ from typing import Any, Dict, List, Tuple
 from urllib.parse import urlsplit
 
 try:
-    from validate_report import validate_html
+    from validate_report import CANONICAL_ZERO_ARTIFACT_CONSTRAINT, validate_html
 except ImportError:
     _scripts_dir = str(Path(__file__).resolve().parent)
     if _scripts_dir not in sys.path:
         sys.path.insert(0, _scripts_dir)
-    from validate_report import validate_html
+    from validate_report import CANONICAL_ZERO_ARTIFACT_CONSTRAINT, validate_html
 
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = SKILL_ROOT / "templates"
 
-DEFAULT_ZERO_ARTIFACT_CONSTRAINT = (
-    "零图片/零文件回传约束：严禁回传截图、图片、压缩包或任何本地附件文件，"
-    "仅以结构化纯文本/Markdown 汇报执行结果、关键命令摘要与可验证 GitHub 链接。"
-)
+DEFAULT_ZERO_ARTIFACT_CONSTRAINT = CANONICAL_ZERO_ARTIFACT_CONSTRAINT
 
 
 def normalize_zero_artifact_constraint(raw: Any) -> str:
     text = str(raw or "").strip()
-    if not text:
+    if not text or text == DEFAULT_ZERO_ARTIFACT_CONSTRAINT:
         return DEFAULT_ZERO_ARTIFACT_CONSTRAINT
-    has_scope = "零图片" in text or "零文件" in text
-    has_prohibition = any(tok in text for tok in ("严禁", "禁止", "不得"))
-    has_artifact_noun = any(tok in text for tok in ("截图", "图片", "附件", "文件", "UI 树"))
-    if has_scope and has_prohibition and has_artifact_noun:
+    if text.startswith(DEFAULT_ZERO_ARTIFACT_CONSTRAINT):
         return text
     return f"{DEFAULT_ZERO_ARTIFACT_CONSTRAINT} 补充约束：{text}"
 
@@ -54,7 +48,7 @@ def esc(value: Any) -> str:
 
 
 def safe_json_for_script(obj: Any) -> str:
-    raw = json.dumps(obj, ensure_ascii=False)
+    raw = json.dumps(obj, ensure_ascii=False, allow_nan=False)
     return (
         raw.replace("&", "\\u0026")
         .replace("<", "\\u003c")

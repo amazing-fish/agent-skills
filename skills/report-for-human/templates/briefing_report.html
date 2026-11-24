@@ -708,20 +708,34 @@
           if (!pre.hasAttribute('tabindex')) pre.setAttribute('tabindex', '-1');
           pre.scrollIntoView({ behavior: 'smooth', block: 'center' });
           try { pre.focus({ preventScroll: true }); } catch (e) { pre.focus(); }
+          try {
+            var selection = window.getSelection ? window.getSelection() : null;
+            if (selection && document.createRange) {
+              var range = document.createRange();
+              range.selectNodeContents(pre);
+              selection.removeAllRanges();
+              selection.addRange(range);
+            }
+          } catch (e) {}
         }
-        showToast('自动复制被浏览器拦截，已定位到执行摘要预览框，请按 Ctrl+C 复制');
+        showToast('自动复制被浏览器拦截，已定位并全选执行摘要预览框，请按 Ctrl+C 复制');
       }
+
+      var activeTabIndex = '1';
 
       function copyText(text, label) {
         var successMsg = label + '已复制（共 ' + text.length + ' 字符）';
+        var startTab = activeTabIndex;
         if (navigator.clipboard && window.isSecureContext) {
           navigator.clipboard.writeText(text).then(function () {
             showToast(successMsg);
           }).catch(function () {
             if (fallbackCopy(text)) {
               showToast(successMsg);
-            } else {
+            } else if (activeTabIndex === startTab) {
               revealPromptForManualCopy();
+            } else {
+              showToast('自动复制被浏览器拦截，请切换至 Tab 3 手动复制执行摘要');
             }
           });
         } else {
@@ -737,13 +751,14 @@
       var tabBtns = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
       var tabPanels = Array.prototype.slice.call(document.querySelectorAll('.tab-panel'));
       function activateTab(idx) {
+        activeTabIndex = String(idx);
         tabBtns.forEach(function (btn) {
-          var active = btn.getAttribute('data-tab') === String(idx);
+          var active = btn.getAttribute('data-tab') === activeTabIndex;
           btn.setAttribute('aria-selected', active ? 'true' : 'false');
           btn.setAttribute('tabindex', active ? '0' : '-1');
         });
         tabPanels.forEach(function (panel) {
-          var active = panel.getAttribute('data-tab-index') === String(idx);
+          var active = panel.getAttribute('data-tab-index') === activeTabIndex;
           if (active) panel.removeAttribute('hidden');
           else panel.setAttribute('hidden', '');
         });

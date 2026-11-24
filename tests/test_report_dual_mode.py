@@ -2,6 +2,7 @@ import copy
 from html.parser import HTMLParser
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -245,8 +246,61 @@ class ReportV21Tests(unittest.TestCase):
         errs_svg_scope, _ = validator.validate_html(svg_elsewhere, expected_mode="briefing")
         self.assertTrue(any("SVG 分层架构图" in e for e in errs_svg_scope), errs_svg_scope)
 
+        # Round-3 hardening checks:
+        # A. Keyword-tricky override cannot suppress canonical baseline clause
+        tricky = copy.deepcopy(self._example("briefing"))
+        tricky["prompt"]["zero_artifact_constraint"] = "零图片；禁止修改分支。"
+        tricky_html = renderer.render_report(tricky, "briefing")
+        self.assertIn(validator.CANONICAL_ZERO_ARTIFACT_CONSTRAINT, tricky_html)
+        self.assertIn("补充约束：零图片；禁止修改分支。", tricky_html)
+        self.assertEqual(validator.validate_html(tricky_html, expected_mode="briefing")[0], [])
+
+        # Standalone validator must reject marked constraint missing canonical clause
+        stripped_constraint = approval_base.replace(
+            validator.CANONICAL_ZERO_ARTIFACT_CONSTRAINT,
+            "零图片；禁止修改分支。",
+        )
+        errs_canon, _ = validator.validate_html(stripped_constraint, expected_mode="briefing")
+        self.assertTrue(any("zero-artifact-constraint" in e for e in errs_canon), errs_canon)
+
+        # B. Non-finite float rejected in safe_json_for_script / render_report
+        nan_data = copy.deepcopy(self._example("briefing"))
+        nan_data["kpis"][0]["value"] = float("nan")
+        with self.assertRaises(ValueError):
+            renderer.render_report(nan_data, "briefing")
+
+        # C. WHATWG srcset data URI with comma inside payload passes cleanly
+        srcset_svg = det_html_1.replace(
+            "</head>",
+            '<img srcset="data:image/svg+xml,<svg%20viewBox=\'0%200%2010,10\'></svg> 1x, data:image/png;base64,AAAA 2x"></head>',
+        )
+        self.assertEqual(validator.validate_html(srcset_svg, expected_mode="briefing")[0], [])
+
+        # D. Duplicate attributes rejected
+        dup_attr = det_html_1.replace(
+            "</head>",
+            '<img src="https://evil.example/a.png" src="data:image/png;base64,AAAA"></head>',
+        )
+        dup_errs, _ = validator.validate_html(dup_attr, expected_mode="briefing")
+        self.assertTrue(any("重复属性" in e for e in dup_errs), dup_errs)
+
+        # E. Malformed anchor href recorded cleanly without raising ValueError
+        bad_anchor = det_html_1.replace("</body>", '<a href="http://[invalid">broken</a></body>')
+        bad_a_errs, _ = validator.validate_html(bad_anchor, expected_mode="briefing")
+        self.assertTrue(any("无效链接" in e for e in bad_a_errs), bad_a_errs)
+
+        # F. Preamble literal {{SSR_ARCH_SVG}} allowed once in #prompt-preview while separate unresolved slot fails
+        both_tokens = det_html_1.replace("</body>", "<div>{{SSR_ARCH_SVG}}</div></body>")
+        both_errs, _ = validator.validate_html(both_tokens, expected_mode="briefing")
+        self.assertTrue(any("{{SSR_ARCH_SVG}}" in e for e in both_errs), both_errs)
+
+        # G. Briefing JS selects preview contents and checks activeTabIndex on async copy failure
+        self.assertIn("range.selectNodeContents(pre)", approval_base)
+        self.assertIn("activeTabIndex === startTab", approval_base)
+
     def test_cli_guards_same_file_and_validate_before_write(self):
         script = SKILL / "scripts" / "render_report.py"
+        utf8_env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
             bad_json = tmp_dir / "bad_briefing.json"
@@ -257,7 +311,7 @@ class ReportV21Tests(unittest.TestCase):
             # Same path input/output must fail without overwriting input JSON
             res_same = subprocess.run(
                 [sys.executable, str(script), "--mode", "briefing", "--input", str(bad_json), "--output", str(bad_json)],
-                capture_output=True, text=True, encoding="utf-8",
+                capture_output=True, text=True, encoding="utf-8", env=utf8_env,
             )
             self.assertNotEqual(res_same.returncode, 0)
             self.assertIn("覆盖输入", res_same.stderr)
@@ -268,7 +322,7 @@ class ReportV21Tests(unittest.TestCase):
             existing_out.write_text("KEEP_EXISTING_REPORT", encoding="utf-8")
             res_fail = subprocess.run(
                 [sys.executable, str(script), "--mode", "briefing", "--input", str(bad_json), "--output", str(existing_out)],
-                capture_output=True, text=True, encoding="utf-8",
+                capture_output=True, text=True, encoding="utf-8", env=utf8_env,
             )
             self.assertEqual(res_fail.returncode, 1)
             self.assertEqual(existing_out.read_text(encoding="utf-8"), "KEEP_EXISTING_REPORT")

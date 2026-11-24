@@ -255,7 +255,7 @@
     "target_machine": "架构设计与执行协调",
     "default_mode": "p0_cleanup",
     "preamble": "已完成五层架构蓝图、能力与业务边界划分以及控制台/录屏/多端差距评估。",
-    "zero_artifact_constraint": "零图片/零文件回传约束：严禁外传截图、UI 树原件、序列号或明文凭据。",
+    "zero_artifact_constraint": "额外严禁外传原始 UI 树 JSON、设备序列号、明文凭据或内部环境拓扑。",
     "modes": [
       {
         "id": "p0_cleanup",
