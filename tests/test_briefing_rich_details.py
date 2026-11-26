@@ -208,6 +208,19 @@ class BriefingRichDetailsTests(unittest.TestCase):
         partial_errs, _ = validator.validate_html(partial_escaped, expected_mode="briefing")
         self.assertTrue(any("转义为纯文本源码" in e for e in partial_errs), partial_errs)
 
+        # 4. Whole-body escaping of mixed heading + intentional literal &lt;h4&gt; must NOT be masked
+        mixed_lit_data = copy.deepcopy(self._briefing_example())
+        mixed_lit_data["inventory"][0]["details"] = "<h4>Title</h4><p>Literal &lt;h4&gt;</p>"
+        mixed_lit_html = renderer.render_report(mixed_lit_data, "briefing")
+        self.assertEqual(validator.validate_html(mixed_lit_html, expected_mode="briefing")[0], [])
+
+        whole_body_escaped = mixed_lit_html.replace(
+            "<h4>Title</h4><p>Literal &lt;h4&gt;</p>",
+            renderer.esc("<h4>Title</h4><p>Literal &lt;h4&gt;</p>"),
+        )
+        whole_errs, _ = validator.validate_html(whole_body_escaped, expected_mode="briefing")
+        self.assertTrue(any("转义为纯文本源码" in e for e in whole_errs), whole_errs)
+
 
 if __name__ == "__main__":
     unittest.main()

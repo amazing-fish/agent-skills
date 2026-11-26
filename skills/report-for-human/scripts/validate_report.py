@@ -69,14 +69,12 @@ _ASCII_WHITESPACE = " \t\n\f\r"
 
 
 class _SourceRichInspector(HTMLParser):
-    """Counts retained structural tags and intentional literal tag-like tokens in source inventory.details."""
+    """Counts retained structural tags in source inventory.details, excluding dropped elements and comments."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self._drop_stack: List[str] = []
-        self._code_depth = 0
         self.expected_tags: Counter[str] = Counter()
-        self.expected_literal_tags: Counter[str] = Counter()
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         t = tag.lower()
@@ -88,8 +86,6 @@ class _SourceRichInspector(HTMLParser):
             return
         if t in _RICH_STRUCTURAL_TAGS:
             self.expected_tags[t] += 1
-        if t in ("code", "pre"):
-            self._code_depth += 1
 
     def handle_startendtag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         t = tag.lower()
@@ -100,25 +96,15 @@ class _SourceRichInspector(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         t = tag.lower()
-        if self._drop_stack:
-            if t == self._drop_stack[-1]:
-                self._drop_stack.pop()
-            return
-        if t in ("code", "pre") and self._code_depth > 0:
-            self._code_depth -= 1
-
-    def handle_data(self, data: str) -> None:
-        if self._drop_stack or self._code_depth > 0:
-            return
-        for m in _RICH_STRUCTURAL_TAG_RE.finditer(data):
-            self.expected_literal_tags[m.group(1).lower()] += 1
+        if self._drop_stack and t == self._drop_stack[-1]:
+            self._drop_stack.pop()
 
 
-def _inspect_source_rich_markup(raw_details: str) -> Tuple[Counter[str], Counter[str]]:
+def _inspect_source_rich_markup(raw_details: str) -> Counter[str]:
     parser = _SourceRichInspector()
     parser.feed(raw_details)
     parser.close()
-    return parser.expected_tags, parser.expected_literal_tags
+    return parser.expected_tags
 
 
 def _normalize_url_candidate(raw_val: str) -> str:
@@ -727,7 +713,7 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
                     src_item = nonempty_items[block_pos]
                 if not src_item or src_item.get("details_format") == "plain":
                     continue
-                expected_tags, expected_literals = _inspect_source_rich_markup(str(src_item.get("details") or ""))
+                expected_tags = _inspect_source_rich_markup(str(src_item.get("details") or ""))
                 if not expected_tags:
                     continue
                 rendered_literals: Counter[str] = Counter(
@@ -736,8 +722,7 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
                 unrendered = sorted(
                     tag_name
                     for tag_name, exp_count in expected_tags.items()
-                    if rendered_tag_counts[tag_name] < exp_count
-                    and rendered_literals[tag_name] > expected_literals[tag_name]
+                    if rendered_tag_counts[tag_name] < exp_count and rendered_literals[tag_name] > 0
                 )
                 if unrendered:
                     item_label = src_item.get("id") or f"#{block_pos + 1}"
