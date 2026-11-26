@@ -130,6 +130,53 @@ class BriefingRichDetailsTests(unittest.TestCase):
         code_html = renderer.render_report(code_data, "briefing")
         self.assertEqual(validator.validate_html(code_html, expected_mode="briefing")[0], [])
 
+    def test_coderabbit_round1_fixes_placeholders_wrapper_event_and_per_item_validation(self):
+        # 1. Plain-text placeholders like <branch> are preserved in both rendered HTML and search text
+        data = copy.deepcopy(self._briefing_example())
+        data["inventory"][0]["details"] = "运行 git checkout <branch> 并在 <owner>/<repo> 核对"
+        data["inventory"][1]["details"] = "<table class=\"raw\">keep literal</table>"
+        data["inventory"][1]["details_format"] = "plain"
+        html_out = renderer.render_report(data, "briefing")
+        errors, warnings = validator.validate_html(html_out, expected_mode="briefing")
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+        self.assertIn("git checkout &lt;branch&gt;", html_out)
+        self.assertIn("&lt;owner&gt;/&lt;repo&gt;", html_out)
+        self.assertIn("&lt;table class=&quot;raw&quot;&gt;keep literal&lt;/table&gt;", html_out)
+        dom = _DomInspector(html_out)
+        inv_cards = [attrs for tag, attrs in dom.tags if tag == "article" and "inv-card" in attrs.get("class", "")]
+        self.assertIn("git checkout <branch>", inv_cards[0].get("data-search-text", ""))
+
+        # Invalid details_format raises ValueError
+        bad_fmt = copy.deepcopy(self._briefing_example())
+        bad_fmt["inventory"][0]["details_format"] = "markdown"
+        with self.assertRaises(ValueError):
+            renderer.render_report(bad_fmt, "briefing")
+
+        # 2. Event handler on .inv-details-body wrapper itself must be rejected by validator
+        wrapper_xss = html_out.replace(
+            '<div class="inv-details-body" data-inv-index="0">',
+            '<div class="inv-details-body" data-inv-index="0" onclick="alert(1)">',
+            1,
+        )
+        wrapper_errs, _ = validator.validate_html(wrapper_xss, expected_mode="briefing")
+        self.assertTrue(any("内联事件处理器" in e for e in wrapper_errs), wrapper_errs)
+
+        # 3. Literal &lt;table&gt; in item 0 must NOT false-positive when item 2 has a real <table>
+        mixed = copy.deepcopy(self._briefing_example())
+        mixed["inventory"][0]["details"] = "<p>Literal &lt;table&gt; token</p>"
+        mixed["inventory"][2]["details"] = '<table class="tbl"><tr><th>K</th></tr><tr><td>V</td></tr></table>'
+        mixed_html = renderer.render_report(mixed, "briefing")
+        self.assertEqual(validator.validate_html(mixed_html, expected_mode="briefing")[0], [])
+
+        # Still fails if item 2's own real <table> was escaped
+        broken_item2 = mixed_html.replace(
+            '<table class="tbl"><tr><th>K</th></tr><tr><td>V</td></tr></table>',
+            '&lt;table class="tbl"&gt;&lt;tr&gt;&lt;th&gt;K&lt;/th&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td&gt;V&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;',
+        )
+        item2_errs, _ = validator.validate_html(broken_item2, expected_mode="briefing")
+        self.assertTrue(any("转义为纯文本源码" in e for e in item2_errs), item2_errs)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -247,9 +247,10 @@ class StructureInspector(HTMLParser):
 
         self._in_inv_details_body_depth = 0
         self._inv_details_code_depth = 0
+        self._cur_inv_details_index: Optional[int] = None
         self._cur_inv_details_tags: set[str] = set()
         self._cur_inv_details_noncode: List[str] = []
-        self.inv_details_blocks: List[Tuple[set[str], str]] = []
+        self.inv_details_blocks: List[Tuple[Optional[int], set[str], str]] = []
         self.inv_details_event_attrs: List[str] = []
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
@@ -424,6 +425,8 @@ class StructureInspector(HTMLParser):
         if "inv-details-body" in cls_tokens and non_void and self._in_inv_details_body_depth == 0:
             self._in_inv_details_body_depth = 1
             self._inv_details_code_depth = 0
+            raw_idx = attr_map.get("data-inv-index", "").strip()
+            self._cur_inv_details_index = int(raw_idx) if raw_idx.isdigit() else None
             self._cur_inv_details_tags = set()
             self._cur_inv_details_noncode = []
         elif self._in_inv_details_body_depth > 0:
@@ -432,6 +435,8 @@ class StructureInspector(HTMLParser):
                 self._in_inv_details_body_depth += 1
             if tag in ("code", "pre") and non_void:
                 self._inv_details_code_depth += 1
+
+        if self._in_inv_details_body_depth > 0:
             for attr_k in attr_map:
                 if attr_k.startswith("on"):
                     self.inv_details_event_attrs.append(f"<{tag} {attr_k}>")
@@ -491,8 +496,13 @@ class StructureInspector(HTMLParser):
                 self._in_inv_details_body_depth -= 1
                 if self._in_inv_details_body_depth == 0:
                     self.inv_details_blocks.append(
-                        (self._cur_inv_details_tags, " ".join(self._cur_inv_details_noncode))
+                        (
+                            self._cur_inv_details_index,
+                            self._cur_inv_details_tags,
+                            " ".join(self._cur_inv_details_noncode),
+                        )
                     )
+                    self._cur_inv_details_index = None
                     self._cur_inv_details_tags = set()
                     self._cur_inv_details_noncode = []
 
@@ -645,20 +655,30 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
                 f"Tab 2 .inv-details-body 禁止包含内联事件处理器属性: {', '.join(inspector.inv_details_event_attrs[:3])}"
             )
         if isinstance(parsed_data, dict):
-            source_rich_tags = set()
-            for item in (parsed_data.get("inventory") or []):
-                if isinstance(item, dict):
-                    for m in _RICH_STRUCTURAL_TAG_RE.finditer(str(item.get("details") or "")):
-                        source_rich_tags.add(m.group(0)[1:].lower())
-            if source_rich_tags:
-                for rendered_tags, noncode_text in inspector.inv_details_blocks:
-                    escaped_tags = {m.group(0)[1:].lower() for m in _RICH_STRUCTURAL_TAG_RE.finditer(noncode_text)}
-                    unrendered = sorted((escaped_tags & source_rich_tags) - rendered_tags)
-                    if unrendered:
-                        errors.append(
-                            f"Tab 2 inventory.details 含富文本结构标签（{', '.join(unrendered)}）但被转义为纯文本源码输出，请通过 sanitize_rich_html 渲染"
-                        )
-                        break
+            inv_items = [it for it in (parsed_data.get("inventory") or []) if isinstance(it, dict)]
+            nonempty_items = [it for it in inv_items if str(it.get("details") or "").strip()]
+            for block_pos, (inv_idx, rendered_tags, noncode_text) in enumerate(inspector.inv_details_blocks):
+                src_item: Optional[Dict[str, Any]] = None
+                if inv_idx is not None and 0 <= inv_idx < len(inv_items):
+                    src_item = inv_items[inv_idx]
+                elif block_pos < len(nonempty_items):
+                    src_item = nonempty_items[block_pos]
+                if not src_item or src_item.get("details_format") == "plain":
+                    continue
+                item_rich_tags = {
+                    m.group(0)[1:].lower()
+                    for m in _RICH_STRUCTURAL_TAG_RE.finditer(str(src_item.get("details") or ""))
+                }
+                if not item_rich_tags:
+                    continue
+                escaped_tags = {m.group(0)[1:].lower() for m in _RICH_STRUCTURAL_TAG_RE.finditer(noncode_text)}
+                unrendered = sorted((escaped_tags & item_rich_tags) - rendered_tags)
+                if unrendered:
+                    item_label = src_item.get("id") or f"#{block_pos + 1}"
+                    errors.append(
+                        f"Tab 2 inventory.details（{item_label}）含富文本结构标签（{', '.join(unrendered)}）但被转义为纯文本源码输出，请通过 sanitize_rich_html 渲染"
+                    )
+                    break
 
     # Tab 3 canonical zero-image / zero-file return constraint inside the marker element
     normalized_constraint = re.sub(r"\s+", " ", " ".join(inspector.zero_constraint_text_parts)).strip()

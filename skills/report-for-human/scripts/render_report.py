@@ -57,6 +57,21 @@ _RICH_RESERVED_CLASSES = frozenset({
 _SAFE_CLASS_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _POS_INT_RE = re.compile(r"^[1-9][0-9]{0,2}$")
 _VALID_TH_SCOPES = frozenset({"col", "row", "colgroup", "rowgroup"})
+_CLOSING_TAG_RE = re.compile(r"</\s*([A-Za-z][A-Za-z0-9:-]*)\s*>")
+_KNOWN_UNWRAPPED_HTML_TAGS = frozenset({
+    "a", "abbr", "address", "article", "aside", "audio", "bdi", "bdo", "blink",
+    "blockquote", "body", "canvas", "center", "cite", "colgroup", "data",
+    "datalist", "dd", "del", "dfn", "dialog", "dl", "dt", "fieldset",
+    "figcaption", "figure", "font", "footer", "h1", "h2", "h3", "h6", "head",
+    "header", "hgroup", "html", "ins", "kbd", "label", "legend", "main", "map",
+    "mark", "marquee", "menu", "meter", "nav", "optgroup", "option", "output",
+    "picture", "progress", "q", "rp", "rt", "ruby", "s", "samp", "section",
+    "small", "strike", "sub", "sup", "time", "tt", "u", "var", "video",
+})
+_PLAIN_SPACE_TAGS = frozenset({
+    "p", "ul", "ol", "li", "br", "hr", "pre", "table", "thead", "tbody", "tfoot",
+    "caption", "tr", "th", "td", "h4", "h5", "details", "summary", "div",
+})
 
 
 def normalize_zero_artifact_constraint(raw: Any) -> str:
@@ -75,12 +90,13 @@ def esc(value: Any) -> str:
 class _RichHtmlSanitizer(HTMLParser):
     """Allow-listed rich-text sanitizer with strict tag balancing and zero active/external content."""
 
-    def __init__(self) -> None:
+    def __init__(self, raw_text: str = "") -> None:
         super().__init__(convert_charrefs=True)
         self.out: List[str] = []
         self.plain_parts: List[str] = []
         self._drop_stack: List[str] = []
         self._open_stack: List[str] = []
+        self._closing_tags = {m.group(1).lower() for m in _CLOSING_TAG_RE.finditer(raw_text)}
 
     def _format_safe_attrs(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> str:
         seen: set[str] = set()
@@ -121,7 +137,14 @@ class _RichHtmlSanitizer(HTMLParser):
         if self._drop_stack:
             return
         if t not in _RICH_ALLOWED_TAGS:
+            # Preserve unmatched plain-text placeholders like <branch> or <owner>
+            if not attrs and t not in _HTML_VOID_ELEMENTS and t not in _KNOWN_UNWRAPPED_HTML_TAGS and t not in self._closing_tags:
+                literal = self.get_starttag_text() or f"<{tag}>"
+                self.out.append(esc(literal))
+                self.plain_parts.append(literal)
             return
+        if t in _PLAIN_SPACE_TAGS:
+            self.plain_parts.append(" ")
         attr_str = self._format_safe_attrs(t, attrs)
         self.out.append(f"<{t}{attr_str}>")
         if t not in _RICH_VOID_TAGS:
@@ -131,6 +154,8 @@ class _RichHtmlSanitizer(HTMLParser):
         t = tag.lower()
         if self._drop_stack or t in _RICH_DROP_WITH_CONTENT or t not in _RICH_ALLOWED_TAGS:
             return
+        if t in _PLAIN_SPACE_TAGS:
+            self.plain_parts.append(" ")
         attr_str = self._format_safe_attrs(t, attrs)
         if t in _RICH_VOID_TAGS:
             self.out.append(f"<{t}{attr_str}>")
@@ -145,6 +170,8 @@ class _RichHtmlSanitizer(HTMLParser):
             return
         if t not in _RICH_ALLOWED_TAGS or t in _RICH_VOID_TAGS:
             return
+        if t in _PLAIN_SPACE_TAGS:
+            self.plain_parts.append(" ")
         if t in self._open_stack:
             while self._open_stack:
                 popped = self._open_stack.pop()
@@ -163,25 +190,30 @@ class _RichHtmlSanitizer(HTMLParser):
         self.close()
         while self._open_stack:
             self.out.append(f"</{self._open_stack.pop()}>")
-        plain = re.sub(r"\s+", " ", " ".join(self.plain_parts)).strip()
+        plain = re.sub(r"\s+", " ", "".join(self.plain_parts)).strip()
         return "".join(self.out), plain
 
 
-def sanitize_rich_html(raw: Any) -> str:
+def render_rich_details(raw: Any, details_format: Optional[str] = None) -> Tuple[str, str]:
     if raw is None:
-        return ""
-    parser = _RichHtmlSanitizer()
-    parser.feed(str(raw))
-    sanitized, _ = parser.finish()
+        return "", ""
+    text = str(raw)
+    if details_format == "plain":
+        return esc(text), re.sub(r"\s+", " ", text).strip()
+    if details_format not in (None, "html"):
+        raise ValueError(f"非法的 inventory.details_format: {details_format!r}（仅支持 'plain' 或 'html'）")
+    parser = _RichHtmlSanitizer(text)
+    parser.feed(text)
+    return parser.finish()
+
+
+def sanitize_rich_html(raw: Any) -> str:
+    sanitized, _ = render_rich_details(raw, "html")
     return sanitized
 
 
 def extract_rich_plain_text(raw: Any) -> str:
-    if raw is None:
-        return ""
-    parser = _RichHtmlSanitizer()
-    parser.feed(str(raw))
-    _, plain = parser.finish()
+    _, plain = render_rich_details(raw, "html")
     return plain
 
 
@@ -1025,13 +1057,13 @@ def render_briefing_filter_pills(options: List[Dict[str, Any]], inventory: List[
 
 def render_briefing_inventory(inventory: List[Dict[str, Any]]) -> str:
     cards: List[str] = []
-    for item in inventory:
+    for idx, item in enumerate(inventory):
         kind = str(item.get("kind", "other"))
         tone = item.get("tone", "accent")
         badge_cls = badge_class_for_status({"success": "approved", "warning": "warning", "danger": "blocked", "info": "ready"}.get(tone, "ready"))
         raw_details = item.get("details")
-        sanitized_details = sanitize_rich_html(raw_details) if raw_details else ""
-        plain_details = extract_rich_plain_text(raw_details) if raw_details else ""
+        details_fmt = item.get("details_format")
+        sanitized_details, plain_details = render_rich_details(raw_details, details_fmt) if raw_details else ("", "")
         search_blob = " ".join([
             str(item.get("id", "")),
             str(item.get("title", "")),
@@ -1045,7 +1077,7 @@ def render_briefing_inventory(inventory: List[Dict[str, Any]]) -> str:
             details_html = (
                 '<details class="inv-details">'
                 '  <summary>展开详细条目与技术说明</summary>'
-                f'  <div class="inv-details-body">{sanitized_details}</div>'
+                f'  <div class="inv-details-body" data-inv-index="{idx}">{sanitized_details}</div>'
                 '</details>'
             )
         cards.append(
