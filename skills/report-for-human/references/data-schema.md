@@ -32,7 +32,7 @@
 - `architecture`：`layers[]`（`id`、`name`、`status` `ready|partial|gap`、`gap_id`、`summary`）、`horizontals[]`（`id`、`name`、`detail`）
 - `gaps[]`：`id`、`code`、`title`、`severity`（`ok|medium|high`）、`status_label`；强制 3 个非空字符串字段 `current_state`、`target_design`、`blocker`
 - `filter_options[]`：`[{"id": "all", "label": "全部"}, ...]`
-- `inventory[]`：`id`、`title`、`kind`、`kind_label`、`maturity`、`tone`、`summary`、`details`
+- `inventory[]`：`id`、`title`、`kind`、`kind_label`、`maturity`、`tone`、`summary`、`details`（支持纯文本或白名单富文本 HTML，如 `table`/`thead`/`tbody`/`tfoot`/`caption`/`tr`/`th`/`td`/`p`/`ul`/`ol`/`li`/`code`/`pre`/`h4`/`h5`/`details`/`summary`/`b`/`strong`/`i`/`em`/`span`/`div`/`br`/`hr`；属性仅允许 `class`/`colspan`/`rowspan`/`scope`/`open`，禁止脚本、事件处理器与外链资源）
 - `platform_capabilities[]`：`title`、`status`、`tone`、`current`、`gap`
 - `roadmap[]`：`phase`、`title`、`detail`
 

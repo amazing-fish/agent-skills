@@ -12,11 +12,12 @@ from __future__ import annotations
 import argparse
 import copy
 import html
+from html.parser import HTMLParser
 import json
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlsplit
 
 try:
@@ -33,6 +34,30 @@ TEMPLATES_DIR = SKILL_ROOT / "templates"
 
 DEFAULT_ZERO_ARTIFACT_CONSTRAINT = CANONICAL_ZERO_ARTIFACT_CONSTRAINT
 
+_RICH_ALLOWED_TAGS = frozenset({
+    "p", "ul", "ol", "li", "b", "strong", "i", "em", "code", "pre", "br", "hr",
+    "table", "thead", "tbody", "tfoot", "caption", "tr", "th", "td",
+    "h4", "h5", "span", "details", "summary", "div",
+})
+_RICH_VOID_TAGS = frozenset({"br", "hr"})
+_RICH_DROP_WITH_CONTENT = frozenset({
+    "script", "style", "iframe", "object", "embed", "svg", "math",
+    "form", "input", "textarea", "select", "button", "link", "meta",
+    "template", "noscript", "title",
+})
+_HTML_VOID_ELEMENTS = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "source", "track", "wbr",
+})
+_RICH_RESERVED_CLASSES = frozenset({
+    "step-card", "kpi-card", "gap-card", "gap-box", "gap-box-label", "gap-box-body",
+    "criteria-card", "inv-card", "inv-details-body", "pr-card", "conflict-banner",
+    "sticky-bar", "tab-panel", "filter-pill",
+})
+_SAFE_CLASS_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_POS_INT_RE = re.compile(r"^[1-9][0-9]{0,2}$")
+_VALID_TH_SCOPES = frozenset({"col", "row", "colgroup", "rowgroup"})
+
 
 def normalize_zero_artifact_constraint(raw: Any) -> str:
     text = str(raw or "").strip()
@@ -45,6 +70,119 @@ def normalize_zero_artifact_constraint(raw: Any) -> str:
 
 def esc(value: Any) -> str:
     return html.escape("" if value is None else str(value), quote=True)
+
+
+class _RichHtmlSanitizer(HTMLParser):
+    """Allow-listed rich-text sanitizer with strict tag balancing and zero active/external content."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.out: List[str] = []
+        self.plain_parts: List[str] = []
+        self._drop_stack: List[str] = []
+        self._open_stack: List[str] = []
+
+    def _format_safe_attrs(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> str:
+        seen: set[str] = set()
+        rendered: List[str] = []
+        for raw_k, raw_v in attrs:
+            k = (raw_k or "").lower()
+            if not k or k in seen:
+                continue
+            val = "" if raw_v is None else raw_v.strip()
+            if k == "class":
+                tokens = [
+                    tok for tok in val.split()
+                    if _SAFE_CLASS_TOKEN_RE.match(tok) and tok not in _RICH_RESERVED_CLASSES
+                ]
+                if tokens:
+                    seen.add(k)
+                    rendered.append(f' class="{esc(" ".join(tokens))}"')
+            elif k in ("colspan", "rowspan") and tag in ("th", "td"):
+                if _POS_INT_RE.match(val):
+                    seen.add(k)
+                    rendered.append(f' {k}="{val}"')
+            elif k == "scope" and tag == "th":
+                low = val.lower()
+                if low in _VALID_TH_SCOPES:
+                    seen.add(k)
+                    rendered.append(f' scope="{low}"')
+            elif k == "open" and tag == "details":
+                seen.add(k)
+                rendered.append(" open")
+        return "".join(rendered)
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        t = tag.lower()
+        if t in _RICH_DROP_WITH_CONTENT:
+            if t not in _HTML_VOID_ELEMENTS:
+                self._drop_stack.append(t)
+            return
+        if self._drop_stack:
+            return
+        if t not in _RICH_ALLOWED_TAGS:
+            return
+        attr_str = self._format_safe_attrs(t, attrs)
+        self.out.append(f"<{t}{attr_str}>")
+        if t not in _RICH_VOID_TAGS:
+            self._open_stack.append(t)
+
+    def handle_startendtag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        t = tag.lower()
+        if self._drop_stack or t in _RICH_DROP_WITH_CONTENT or t not in _RICH_ALLOWED_TAGS:
+            return
+        attr_str = self._format_safe_attrs(t, attrs)
+        if t in _RICH_VOID_TAGS:
+            self.out.append(f"<{t}{attr_str}>")
+        else:
+            self.out.append(f"<{t}{attr_str}></{t}>")
+
+    def handle_endtag(self, tag: str) -> None:
+        t = tag.lower()
+        if self._drop_stack:
+            if t == self._drop_stack[-1]:
+                self._drop_stack.pop()
+            return
+        if t not in _RICH_ALLOWED_TAGS or t in _RICH_VOID_TAGS:
+            return
+        if t in self._open_stack:
+            while self._open_stack:
+                popped = self._open_stack.pop()
+                self.out.append(f"</{popped}>")
+                if popped == t:
+                    break
+
+    def handle_data(self, data: str) -> None:
+        if self._drop_stack:
+            return
+        self.out.append(esc(data))
+        if data:
+            self.plain_parts.append(data)
+
+    def finish(self) -> Tuple[str, str]:
+        self.close()
+        while self._open_stack:
+            self.out.append(f"</{self._open_stack.pop()}>")
+        plain = re.sub(r"\s+", " ", " ".join(self.plain_parts)).strip()
+        return "".join(self.out), plain
+
+
+def sanitize_rich_html(raw: Any) -> str:
+    if raw is None:
+        return ""
+    parser = _RichHtmlSanitizer()
+    parser.feed(str(raw))
+    sanitized, _ = parser.finish()
+    return sanitized
+
+
+def extract_rich_plain_text(raw: Any) -> str:
+    if raw is None:
+        return ""
+    parser = _RichHtmlSanitizer()
+    parser.feed(str(raw))
+    _, plain = parser.finish()
+    return plain
 
 
 def safe_json_for_script(obj: Any) -> str:
@@ -821,20 +959,23 @@ def render_briefing_inventory(inventory: List[Dict[str, Any]]) -> str:
         kind = str(item.get("kind", "other"))
         tone = item.get("tone", "accent")
         badge_cls = badge_class_for_status({"success": "approved", "warning": "warning", "danger": "blocked", "info": "ready"}.get(tone, "ready"))
+        raw_details = item.get("details")
+        sanitized_details = sanitize_rich_html(raw_details) if raw_details else ""
+        plain_details = extract_rich_plain_text(raw_details) if raw_details else ""
         search_blob = " ".join([
             str(item.get("id", "")),
             str(item.get("title", "")),
             str(item.get("kind_label", kind)),
             str(item.get("maturity", "")),
             str(item.get("summary", "")),
-            str(item.get("details", "")),
+            plain_details,
         ])
         details_html = ""
-        if item.get("details"):
+        if sanitized_details.strip():
             details_html = (
                 '<details class="inv-details">'
                 '  <summary>展开详细条目与技术说明</summary>'
-                f'  <div class="inv-details-body">{esc(item["details"])}</div>'
+                f'  <div class="inv-details-body">{sanitized_details}</div>'
                 '</details>'
             )
         cards.append(

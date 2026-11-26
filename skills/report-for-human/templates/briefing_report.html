@@ -351,9 +351,37 @@
     .inv-details { margin-top: 8px; font-size: 12.5px; }
     .inv-details summary { cursor: pointer; color: var(--accent); font-weight: 600; }
     .inv-details-body {
-      margin-top: 6px; padding: 8px 12px; background: var(--bg-subtle);
-      border: 1px solid var(--border-default); border-radius: var(--radius-sm); color: var(--text-secondary);
+      margin-top: 6px; padding: 10px 12px; background: var(--bg-subtle);
+      border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+      color: var(--text-secondary); overflow-x: auto; line-height: 1.55;
     }
+    .inv-details-body > :first-child { margin-top: 0; }
+    .inv-details-body > :last-child { margin-bottom: 0; }
+    .inv-details-body table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12.5px; }
+    .inv-details-body th, .inv-details-body td {
+      border: 1px solid var(--border-default); padding: 5px 9px;
+      text-align: left; vertical-align: top; line-height: 1.5;
+    }
+    .inv-details-body th { background: var(--bg-surface); color: var(--text-primary); font-weight: 700; }
+    .inv-details-body caption { text-align: left; font-weight: 700; color: var(--text-primary); margin-bottom: 6px; }
+    .inv-details-body p { margin: 6px 0; line-height: 1.55; }
+    .inv-details-body ul, .inv-details-body ol { margin: 6px 0; padding-left: 20px; line-height: 1.55; }
+    .inv-details-body li { margin: 2px 0; }
+    .inv-details-body h4, .inv-details-body h5 { margin: 12px 0 6px; font-size: 13px; font-weight: 700; color: var(--text-primary); }
+    .inv-details-body code {
+      font-family: var(--font-mono); font-size: 12px; padding: 1px 5px;
+      background: var(--bg-surface); color: var(--text-primary);
+      border: 1px solid var(--border-default); border-radius: 4px;
+    }
+    .inv-details-body pre {
+      margin: 8px 0; padding: 8px 10px; border-radius: var(--radius-sm);
+      background: var(--bg-code); color: var(--text-code); font-family: var(--font-mono);
+      font-size: 12px; line-height: 1.5; overflow-x: auto; white-space: pre-wrap;
+    }
+    .inv-details-body pre code { padding: 0; border: none; background: transparent; color: inherit; }
+    .inv-details-body hr { border: none; border-top: 1px solid var(--border-default); margin: 10px 0; }
+    .inv-details-body details { margin: 6px 0; }
+    .inv-details-body summary { cursor: pointer; color: var(--accent); font-weight: 600; }
 
     .badge-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .badge {
