@@ -101,6 +101,17 @@
       "default_checked": true,
       "depends_on": ["pr-101"],
       "summary": "基于 #101 快照锚点，在内网机拉取前强制校验远端 main HEAD 一致性。",
+      "behavior_changes": [
+        {
+          "capability": "离线/断网环境下的内网拉取与本地试跑",
+          "before": "允许在未核对远端 main HEAD 的情况下直接基于本地缓存分支启动执行。",
+          "after": "默认强制比对远端锚定 SHA，若校验失败或未提供新回执则拒绝自动启动。",
+          "impact": "安全收益：避免旧基线误跑；功能代价：临时离线复测需额外显式传入确认参数。",
+          "recovery": "传入 `--allow-offline-snapshot` 标志或回退至 #101 合入前提交即可恢复旧行为。",
+          "source": "PR #102",
+          "objection_status": "待人工确认取舍"
+        }
+      ],
       "notes": "合入 #101 后将自动 rebase 到 main。"
     },
     {
