@@ -48,6 +48,24 @@ class HumanReportPolicyTests(unittest.TestCase):
         self.assertEqual(verdict, accepted)
         self.assertIn('Automatic staging never authorizes merging.', workflow)
 
+    def test_references_links_and_screenshot_boundary(self):
+        refs_dir = SKILL / 'references'
+        for md_path in sorted(refs_dir.glob('*.md')):
+            content = md_path.read_text(encoding='utf-8')
+            for target in re.findall(r'\]\(([^)#]+\.md)\)', content):
+                if target.startswith(('http://', 'https://')):
+                    continue
+                resolved = (md_path.parent / target).resolve()
+                self.assertTrue(resolved.is_file(), f'Broken link in {md_path.name}: {target}')
+
+        evidence = (refs_dir / 'evidence.md').read_text(encoding='utf-8')
+        self.assertNotIn('reading-navigation.md', evidence)
+        self.assertNotIn('蓝色生成器', evidence)
+        self.assertNotIn('自包含 HTML 可内嵌必要截图', evidence)
+        self.assertIn('严禁', evidence)
+        self.assertIn('待补截图', evidence)
+        self.assertIn('data-schema.md', evidence)
+
 
 if __name__ == '__main__':
     unittest.main()
