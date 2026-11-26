@@ -274,6 +274,69 @@ def badge_class_for_status(status: str) -> str:
     }.get(status, "badge-accent")
 
 
+def render_behavior_changes(items: Any, pr_label: str) -> Tuple[str, str]:
+    """Render always-visible real behavior differences, trade-offs, and recovery paths (never folded)."""
+    if items is None or items == []:
+        return "", ""
+    if not isinstance(items, list):
+        raise ValueError(f"PR `{pr_label}` 的 `behavior_changes` 必须是对象数组")
+
+    rendered_items: List[str] = []
+    search_parts: List[str] = []
+    required_fields = (
+        ("capability", "受影响能力 / 场景"),
+        ("before", "原来"),
+        ("after", "现在"),
+        ("impact", "使用者影响与功能代价"),
+        ("recovery", "回退 / 恢复条件"),
+    )
+    for idx, entry in enumerate(items, start=1):
+        if not isinstance(entry, dict):
+            raise ValueError(f"PR `{pr_label}` 的 `behavior_changes[{idx - 1}]` 必须是对象")
+        for key, label in required_fields:
+            raw = entry.get(key)
+            if not isinstance(raw, str) or not raw.strip():
+                raise ValueError(
+                    f"PR `{pr_label}` 的 `behavior_changes[{idx - 1}].{key}`（{label}）必须为非空字符串"
+                )
+            search_parts.append(raw.strip())
+
+        badges: List[str] = []
+        if entry.get("source"):
+            src = str(entry["source"]).strip()
+            if src:
+                badges.append(f'<span class="badge">{esc(src)}</span>')
+                search_parts.append(src)
+        if entry.get("objection_status"):
+            obj = str(entry["objection_status"]).strip()
+            if obj:
+                badges.append(f'<span class="badge badge-warning">{esc(obj)}</span>')
+                search_parts.append(obj)
+
+        rendered_items.append(
+            '<div class="behavior-change-item">'
+            '  <div class="behavior-change-head">'
+            f'    <span class="behavior-change-title">{esc(entry["capability"])}</span>'
+            f'    <div class="badge-row">{"".join(badges)}</div>'
+            '  </div>'
+            '  <div class="behavior-change-grid">'
+            f'    <div class="behavior-change-cell"><span class="behavior-change-label">原来</span><p class="behavior-change-val">{esc(entry["before"])}</p></div>'
+            f'    <div class="behavior-change-cell"><span class="behavior-change-label">现在</span><p class="behavior-change-val">{esc(entry["after"])}</p></div>'
+            f'    <div class="behavior-change-cell"><span class="behavior-change-label">使用者影响与功能代价</span><p class="behavior-change-val">{esc(entry["impact"])}</p></div>'
+            f'    <div class="behavior-change-cell"><span class="behavior-change-label">回退 / 恢复条件</span><p class="behavior-change-val">{esc(entry["recovery"])}</p></div>'
+            '  </div>'
+            '</div>'
+        )
+
+    block_html = (
+        '<div class="behavior-changes" data-rfh-role="behavior-changes">'
+        '  <div class="behavior-changes-heading">真实行为差异、功能代价与回退路径（默认常显）</div>'
+        f'  {"".join(rendered_items)}'
+        '</div>'
+    )
+    return block_html, " ".join(search_parts)
+
+
 def render_approval_prs(prs: List[Dict[str, Any]]) -> str:
     by_id = {str(p["id"]): p for p in prs}
     cards: List[str] = []
@@ -298,6 +361,7 @@ def render_approval_prs(prs: List[Dict[str, Any]]) -> str:
             branch_text = f'<span>分支：<code>{esc(pr.get("head_branch", ""))}</code> → <code>{esc(pr.get("base_branch", "main"))}</code></span>'
         author_text = f'<span>作者：{esc(pr["author"])}</span>' if pr.get("author") else ""
         diff_text = f'<span>变更：<code>{esc(pr["diff_stat"])}</code></span>' if pr.get("diff_stat") else ""
+        behavior_html, _ = render_behavior_changes(pr.get("behavior_changes"), f'#{pr.get("number", pid)}')
 
         details_html = ""
         if pr.get("notes") or pr.get("evidence_links"):
@@ -333,6 +397,7 @@ def render_approval_prs(prs: List[Dict[str, Any]]) -> str:
             f'  </div>'
             f'  <div class="pr-meta">{branch_text}{author_text}{diff_text}</div>'
             f'  <p class="pr-summary">{esc(pr.get("summary", ""))}</p>'
+            f'  {behavior_html}'
             f'  {details_html}'
             f'</article>'
         )
@@ -488,6 +553,9 @@ def render_handoff_prs(prs: List[Dict[str, Any]]) -> str:
             f'<div class="pr-conflict-note"><strong>冲突解决记录：</strong>{esc(pr["conflict_note"])}</div>'
             if pr.get("conflict_note") else ""
         )
+        behavior_html, behavior_search = render_behavior_changes(
+            pr.get("behavior_changes"), f'#{pr.get("number", pr.get("id", ""))}'
+        )
         details_html = ""
         if pr.get("notes") or pr.get("evidence_links"):
             ev_links = ""
@@ -506,6 +574,7 @@ def render_handoff_prs(prs: List[Dict[str, Any]]) -> str:
             str(pr.get("head_branch", "")),
             str(pr.get("summary", "")),
             str(pr.get("conflict_note", "")),
+            behavior_search,
             str(st_lbl),
         ])
         cards.append(
@@ -520,6 +589,7 @@ def render_handoff_prs(prs: List[Dict[str, Any]]) -> str:
             f'  <div class="pr-meta">{merge_sha_html}{branch_html}</div>'
             f'  <p class="pr-summary">{esc(pr.get("summary", ""))}</p>'
             f'  {conflict_html}'
+            f'  {behavior_html}'
             f'  {details_html}'
             f'</article>'
         )
