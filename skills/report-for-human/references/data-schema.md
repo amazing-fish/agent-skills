@@ -23,7 +23,7 @@
 ## 3. 模式专属字段
 
 ### Mode A（`approval`）& Mode B（`handoff`）
-- `prs[]`：`id`、`number`、`title`、`url`、`head_branch`、`base_branch`、`status`（Mode A：`ready|approved|warning|blocked`；Mode B：`merged|conflict_resolved|blocked|deferred`）、`status_label`、`ci_status`、`summary`；Mode A 另含 `default_checked`、`depends_on[]`；Mode B 另含 `merge_commit_sha`、`merge_commit_url`、`conflict_note`
+- `prs[]`：`id`、`number`、`title`、`url`、`head_branch`、`base_branch`、`status`（Mode A：`ready|approved|warning|blocked`；Mode B：`merged|conflict_resolved|blocked|deferred`）、`status_label`、`ci_status`、`summary`；Mode A 另含 `default_checked`、`depends_on[]`；Mode B 另含 `merge_commit_sha`、`merge_commit_url`、`conflict_note`；可选 `behavior_changes[]`（默认常显、禁止折叠，每项须含非空 `capability`、`before`、`after`、`impact`、`recovery`，可选 `source` 与 `objection_status`）
 - `conflicts`（Mode B 必填）：`has_conflicts`、`summary`、`items[]`
 - `gates[]`（可选）：`id`、`title`、`description`、`url`、`authorized`（布尔；兼容 `default_enabled`）
 - `criteria[]`：`id`、`code`、`title`、`url`、`link_label`、`default_checked`、`status`、`status_label`；强制 3 个非 `null` 且长度 >= 4 的字符串字段 `target_and_status`、`ruling`、`unlock_and_blockers`
