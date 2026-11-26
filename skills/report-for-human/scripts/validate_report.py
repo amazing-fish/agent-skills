@@ -52,11 +52,73 @@ _CSS_EXTERNAL_URL_RE = re.compile(
 )
 
 PLACEHOLDER_RE = re.compile(r"\{\{[A-Z0-9_]+\}\}")
+_RICH_STRUCTURAL_TAGS = frozenset({
+    "table", "thead", "tbody", "tfoot", "tr", "th", "td",
+    "ul", "ol", "li", "h4", "h5", "details",
+})
 _RICH_STRUCTURAL_TAG_RE = re.compile(
-    r"<(?:table|thead|tbody|tfoot|tr|th|td|ul|ol|li|h4|h5|details)\b",
+    r"<(table|thead|tbody|tfoot|tr|th|td|ul|ol|li|h4|h5|details)(?=[\s/>])",
     re.IGNORECASE,
 )
+_RICH_DROP_WITH_CONTENT = frozenset({
+    "script", "style", "iframe", "object", "embed", "svg", "math",
+    "form", "input", "textarea", "select", "button", "link", "meta",
+    "template", "noscript", "title",
+})
 _ASCII_WHITESPACE = " \t\n\f\r"
+
+
+class _SourceRichInspector(HTMLParser):
+    """Counts retained structural tags and intentional literal tag-like tokens in source inventory.details."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._drop_stack: List[str] = []
+        self._code_depth = 0
+        self.expected_tags: Counter[str] = Counter()
+        self.expected_literal_tags: Counter[str] = Counter()
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        t = tag.lower()
+        if t in _RICH_DROP_WITH_CONTENT:
+            if t not in _VOID_ELEMENTS:
+                self._drop_stack.append(t)
+            return
+        if self._drop_stack:
+            return
+        if t in _RICH_STRUCTURAL_TAGS:
+            self.expected_tags[t] += 1
+        if t in ("code", "pre"):
+            self._code_depth += 1
+
+    def handle_startendtag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        t = tag.lower()
+        if self._drop_stack or t in _RICH_DROP_WITH_CONTENT:
+            return
+        if t in _RICH_STRUCTURAL_TAGS:
+            self.expected_tags[t] += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        t = tag.lower()
+        if self._drop_stack:
+            if t == self._drop_stack[-1]:
+                self._drop_stack.pop()
+            return
+        if t in ("code", "pre") and self._code_depth > 0:
+            self._code_depth -= 1
+
+    def handle_data(self, data: str) -> None:
+        if self._drop_stack or self._code_depth > 0:
+            return
+        for m in _RICH_STRUCTURAL_TAG_RE.finditer(data):
+            self.expected_literal_tags[m.group(1).lower()] += 1
+
+
+def _inspect_source_rich_markup(raw_details: str) -> Tuple[Counter[str], Counter[str]]:
+    parser = _SourceRichInspector()
+    parser.feed(raw_details)
+    parser.close()
+    return parser.expected_tags, parser.expected_literal_tags
 
 
 def _normalize_url_candidate(raw_val: str) -> str:
@@ -248,9 +310,9 @@ class StructureInspector(HTMLParser):
         self._in_inv_details_body_depth = 0
         self._inv_details_code_depth = 0
         self._cur_inv_details_index: Optional[int] = None
-        self._cur_inv_details_tags: set[str] = set()
+        self._cur_inv_details_tags: Counter[str] = Counter()
         self._cur_inv_details_noncode: List[str] = []
-        self.inv_details_blocks: List[Tuple[Optional[int], set[str], str]] = []
+        self.inv_details_blocks: List[Tuple[Optional[int], Counter[str], str]] = []
         self.inv_details_event_attrs: List[str] = []
 
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
@@ -427,10 +489,10 @@ class StructureInspector(HTMLParser):
             self._inv_details_code_depth = 0
             raw_idx = attr_map.get("data-inv-index", "").strip()
             self._cur_inv_details_index = int(raw_idx) if raw_idx.isdigit() else None
-            self._cur_inv_details_tags = set()
+            self._cur_inv_details_tags = Counter()
             self._cur_inv_details_noncode = []
         elif self._in_inv_details_body_depth > 0:
-            self._cur_inv_details_tags.add(tag)
+            self._cur_inv_details_tags[tag] += 1
             if non_void:
                 self._in_inv_details_body_depth += 1
             if tag in ("code", "pre") and non_void:
@@ -503,7 +565,7 @@ class StructureInspector(HTMLParser):
                         )
                     )
                     self._cur_inv_details_index = None
-                    self._cur_inv_details_tags = set()
+                    self._cur_inv_details_tags = Counter()
                     self._cur_inv_details_noncode = []
 
     def handle_data(self, data: str) -> None:
@@ -657,7 +719,7 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
         if isinstance(parsed_data, dict):
             inv_items = [it for it in (parsed_data.get("inventory") or []) if isinstance(it, dict)]
             nonempty_items = [it for it in inv_items if str(it.get("details") or "").strip()]
-            for block_pos, (inv_idx, rendered_tags, noncode_text) in enumerate(inspector.inv_details_blocks):
+            for block_pos, (inv_idx, rendered_tag_counts, noncode_text) in enumerate(inspector.inv_details_blocks):
                 src_item: Optional[Dict[str, Any]] = None
                 if inv_idx is not None and 0 <= inv_idx < len(inv_items):
                     src_item = inv_items[inv_idx]
@@ -665,14 +727,18 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
                     src_item = nonempty_items[block_pos]
                 if not src_item or src_item.get("details_format") == "plain":
                     continue
-                item_rich_tags = {
-                    m.group(0)[1:].lower()
-                    for m in _RICH_STRUCTURAL_TAG_RE.finditer(str(src_item.get("details") or ""))
-                }
-                if not item_rich_tags:
+                expected_tags, expected_literals = _inspect_source_rich_markup(str(src_item.get("details") or ""))
+                if not expected_tags:
                     continue
-                escaped_tags = {m.group(0)[1:].lower() for m in _RICH_STRUCTURAL_TAG_RE.finditer(noncode_text)}
-                unrendered = sorted((escaped_tags & item_rich_tags) - rendered_tags)
+                rendered_literals: Counter[str] = Counter(
+                    m.group(1).lower() for m in _RICH_STRUCTURAL_TAG_RE.finditer(noncode_text)
+                )
+                unrendered = sorted(
+                    tag_name
+                    for tag_name, exp_count in expected_tags.items()
+                    if rendered_tag_counts[tag_name] < exp_count
+                    and rendered_literals[tag_name] > expected_literals[tag_name]
+                )
                 if unrendered:
                     item_label = src_item.get("id") or f"#{block_pos + 1}"
                     errors.append(

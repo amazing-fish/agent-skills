@@ -177,6 +177,37 @@ class BriefingRichDetailsTests(unittest.TestCase):
         item2_errs, _ = validator.validate_html(broken_item2, expected_mode="briefing")
         self.assertTrue(any("转义为纯文本源码" in e for e in item2_errs), item2_errs)
 
+    def test_coderabbit_round2_validator_edge_cases(self):
+        # 1. Hyphenated placeholder <table-name> must not trigger structural-tag false positive
+        data = copy.deepcopy(self._briefing_example())
+        data["inventory"][0]["details"] = "查询 <table-name> 与 <details-id>"
+        html_out = renderer.render_report(data, "briefing")
+        self.assertIn("&lt;table-name&gt;", html_out)
+        self.assertEqual(validator.validate_html(html_out, expected_mode="briefing")[0], [])
+
+        # 2. Structural tags inside dropped <script> or HTML comments must not be counted as expected markup
+        dropped_data = copy.deepcopy(self._briefing_example())
+        dropped_data["inventory"][0]["details"] = "<script><table></script><p>Literal &lt;table&gt;</p>"
+        dropped_data["inventory"][1]["details"] = "<!-- <table><tr><td>x</td></tr></table> --><p>Literal &lt;table&gt;</p>"
+        dropped_html = renderer.render_report(dropped_data, "briefing")
+        self.assertEqual(validator.validate_html(dropped_html, expected_mode="briefing")[0], [])
+
+        # 3. Two tables in one item: escaping only the second table must still fail validation
+        two_tbl_data = copy.deepcopy(self._briefing_example())
+        two_tbl_data["inventory"][0]["details"] = (
+            "<table><tr><td>A</td></tr></table>"
+            "<table><tr><td>B</td></tr></table>"
+        )
+        two_tbl_html = renderer.render_report(two_tbl_data, "briefing")
+        self.assertEqual(validator.validate_html(two_tbl_html, expected_mode="briefing")[0], [])
+
+        partial_escaped = two_tbl_html.replace(
+            "<table><tr><td>B</td></tr></table>",
+            "&lt;table&gt;&lt;tr&gt;&lt;td&gt;B&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;",
+        )
+        partial_errs, _ = validator.validate_html(partial_escaped, expected_mode="briefing")
+        self.assertTrue(any("转义为纯文本源码" in e for e in partial_errs), partial_errs)
+
 
 if __name__ == "__main__":
     unittest.main()
