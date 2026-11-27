@@ -196,7 +196,7 @@
       "maturity": "draft（机制验证通过）",
       "tone": "info",
       "summary": "真实核心业务用例，需消费独立的收藏实测来源并断言同一实体身份后方可计入正式通过率。",
-      "details": "等待业务判据确认及数据驱动改造收口后晋级。"
+      "details": "<p>等待业务判据确认及数据驱动改造收口后晋级，最近两轮基线对照：</p><table class=\"tbl\"><thead><tr><th scope=\"col\">检查项</th><th scope=\"col\">当前状态</th><th scope=\"col\">阻塞原因</th></tr></thead><tbody><tr><td>收藏实体来源</td><td><code>draft</code></td><td>待接入独立只读收藏清单</td></tr><tr><td>算路终态断言</td><td><code>verified</code></td><td>机制验证通过，待绑定业务判据</td></tr></tbody></table>"
     }
   ],
   "platform_capabilities": [

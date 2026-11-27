@@ -52,7 +52,59 @@ _CSS_EXTERNAL_URL_RE = re.compile(
 )
 
 PLACEHOLDER_RE = re.compile(r"\{\{[A-Z0-9_]+\}\}")
+_RICH_STRUCTURAL_TAGS = frozenset({
+    "table", "thead", "tbody", "tfoot", "tr", "th", "td",
+    "ul", "ol", "li", "h4", "h5", "details",
+})
+_RICH_STRUCTURAL_TAG_RE = re.compile(
+    r"<(table|thead|tbody|tfoot|tr|th|td|ul|ol|li|h4|h5|details)(?=[\s/>])",
+    re.IGNORECASE,
+)
+_RICH_DROP_WITH_CONTENT = frozenset({
+    "script", "style", "iframe", "object", "embed", "svg", "math",
+    "form", "input", "textarea", "select", "button", "link", "meta",
+    "template", "noscript", "title",
+})
 _ASCII_WHITESPACE = " \t\n\f\r"
+
+
+class _SourceRichInspector(HTMLParser):
+    """Counts retained structural tags in source inventory.details, excluding dropped elements and comments."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._drop_stack: List[str] = []
+        self.expected_tags: Counter[str] = Counter()
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        t = tag.lower()
+        if t in _RICH_DROP_WITH_CONTENT:
+            if t not in _VOID_ELEMENTS:
+                self._drop_stack.append(t)
+            return
+        if self._drop_stack:
+            return
+        if t in _RICH_STRUCTURAL_TAGS:
+            self.expected_tags[t] += 1
+
+    def handle_startendtag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        t = tag.lower()
+        if self._drop_stack or t in _RICH_DROP_WITH_CONTENT:
+            return
+        if t in _RICH_STRUCTURAL_TAGS:
+            self.expected_tags[t] += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        t = tag.lower()
+        if self._drop_stack and t == self._drop_stack[-1]:
+            self._drop_stack.pop()
+
+
+def _inspect_source_rich_markup(raw_details: str) -> Counter[str]:
+    parser = _SourceRichInspector()
+    parser.feed(raw_details)
+    parser.close()
+    return parser.expected_tags
 
 
 def _normalize_url_candidate(raw_val: str) -> str:
@@ -241,6 +293,14 @@ class StructureInspector(HTMLParser):
         self._current_gap_boxes: List[Tuple[str, str]] = []
         self.gap_card_boxes: List[List[Tuple[str, str]]] = []
 
+        self._in_inv_details_body_depth = 0
+        self._inv_details_code_depth = 0
+        self._cur_inv_details_index: Optional[int] = None
+        self._cur_inv_details_tags: Counter[str] = Counter()
+        self._cur_inv_details_noncode: List[str] = []
+        self.inv_details_blocks: List[Tuple[Optional[int], Counter[str], str]] = []
+        self.inv_details_event_attrs: List[str] = []
+
     def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
         attr_map: Dict[str, str] = {}
         seen_attrs: set[str] = set()
@@ -410,6 +470,25 @@ class StructureInspector(HTMLParser):
                 elif self._in_gap_box_body_depth > 0:
                     self._in_gap_box_body_depth += 1
 
+        if "inv-details-body" in cls_tokens and non_void and self._in_inv_details_body_depth == 0:
+            self._in_inv_details_body_depth = 1
+            self._inv_details_code_depth = 0
+            raw_idx = attr_map.get("data-inv-index", "").strip()
+            self._cur_inv_details_index = int(raw_idx) if raw_idx.isdigit() else None
+            self._cur_inv_details_tags = Counter()
+            self._cur_inv_details_noncode = []
+        elif self._in_inv_details_body_depth > 0:
+            self._cur_inv_details_tags[tag] += 1
+            if non_void:
+                self._in_inv_details_body_depth += 1
+            if tag in ("code", "pre") and non_void:
+                self._inv_details_code_depth += 1
+
+        if self._in_inv_details_body_depth > 0:
+            for attr_k in attr_map:
+                if attr_k.startswith("on"):
+                    self.inv_details_event_attrs.append(f"<{tag} {attr_k}>")
+
     def handle_endtag(self, tag: str) -> None:
         non_void = tag not in _VOID_ELEMENTS
         if tag == "style":
@@ -459,6 +538,22 @@ class StructureInspector(HTMLParser):
                     self.gap_card_boxes.append(self._current_gap_boxes)
                     self._current_gap_boxes = []
 
+            if self._in_inv_details_body_depth > 0:
+                if tag in ("code", "pre") and self._inv_details_code_depth > 0:
+                    self._inv_details_code_depth -= 1
+                self._in_inv_details_body_depth -= 1
+                if self._in_inv_details_body_depth == 0:
+                    self.inv_details_blocks.append(
+                        (
+                            self._cur_inv_details_index,
+                            self._cur_inv_details_tags,
+                            " ".join(self._cur_inv_details_noncode),
+                        )
+                    )
+                    self._cur_inv_details_index = None
+                    self._cur_inv_details_tags = Counter()
+                    self._cur_inv_details_noncode = []
+
     def handle_data(self, data: str) -> None:
         if self.in_style:
             self.style_parts.append(data)
@@ -487,6 +582,8 @@ class StructureInspector(HTMLParser):
             text = data.strip()
             if text:
                 self._current_gap_box_body.append(text)
+        if self._in_inv_details_body_depth > 0 and self._inv_details_code_depth == 0:
+            self._cur_inv_details_noncode.append(data)
 
     def handle_comment(self, data: str) -> None:
         self.other_placeholders.extend(PLACEHOLDER_RE.findall(data))
@@ -601,6 +698,38 @@ def validate_html(html_text: str, expected_mode: Optional[str] = None) -> Tuple[
                 missing_or_empty = [lbl for lbl in required_gap_labels if not box_map.get(lbl, "").strip()]
                 if missing_or_empty:
                     errors.append(f"Tab 1 第 {idx} 条架构差距卡片缺少必填维度（或维度块为空）: {', '.join(missing_or_empty)}")
+        if inspector.inv_details_event_attrs:
+            errors.append(
+                f"Tab 2 .inv-details-body 禁止包含内联事件处理器属性: {', '.join(inspector.inv_details_event_attrs[:3])}"
+            )
+        if isinstance(parsed_data, dict):
+            inv_items = [it for it in (parsed_data.get("inventory") or []) if isinstance(it, dict)]
+            nonempty_items = [it for it in inv_items if str(it.get("details") or "").strip()]
+            for block_pos, (inv_idx, rendered_tag_counts, noncode_text) in enumerate(inspector.inv_details_blocks):
+                src_item: Optional[Dict[str, Any]] = None
+                if inv_idx is not None and 0 <= inv_idx < len(inv_items):
+                    src_item = inv_items[inv_idx]
+                elif block_pos < len(nonempty_items):
+                    src_item = nonempty_items[block_pos]
+                if not src_item or src_item.get("details_format") == "plain":
+                    continue
+                expected_tags = _inspect_source_rich_markup(str(src_item.get("details") or ""))
+                if not expected_tags:
+                    continue
+                rendered_literals: Counter[str] = Counter(
+                    m.group(1).lower() for m in _RICH_STRUCTURAL_TAG_RE.finditer(noncode_text)
+                )
+                unrendered = sorted(
+                    tag_name
+                    for tag_name, exp_count in expected_tags.items()
+                    if rendered_tag_counts[tag_name] < exp_count and rendered_literals[tag_name] > 0
+                )
+                if unrendered:
+                    item_label = src_item.get("id") or f"#{block_pos + 1}"
+                    errors.append(
+                        f"Tab 2 inventory.details（{item_label}）含富文本结构标签（{', '.join(unrendered)}）但被转义为纯文本源码输出，请通过 sanitize_rich_html 渲染"
+                    )
+                    break
 
     # Tab 3 canonical zero-image / zero-file return constraint inside the marker element
     normalized_constraint = re.sub(r"\s+", " ", " ".join(inspector.zero_constraint_text_parts)).strip()
